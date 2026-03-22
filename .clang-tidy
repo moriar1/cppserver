@@ -16,6 +16,8 @@ Checks:
   - -bugprone-assignment-in-if-condition
   - -android-cloexec-accept
   - -google-runtime-int
-  - -concurrency-mt-unsafe # for exit()
   - -fuchsia-default-arguments-declarations
+  - -readability-function-cognitive-complexity
+  - -cppcoreguidelines-macro-usage # for LOG_*() macros
+  - -cppcoreguidelines-avoid-do-while # for LOG_*() macros
 UseColor: true

@@ -1,7 +1,7 @@
+#include "customlogger.hpp"
 #include <arpa/inet.h>
 #include <array>
 #include <csignal>
-#include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -106,11 +106,11 @@ static Socket setup_server() {
     std::array<char, INET6_ADDRSTRLEN> ipstr{};
     inet_ntop(p->ai_family, get_in_addr(p->ai_addr), ipstr.data(),
               ipstr.size());
-    std::clog << "binding to " << ipstr.data() << '\n';
+    LOG_INFO("binding to ", ipstr.data());
 
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (s == -1) {
-      std::cerr << "socket\n";
+      LOG_ERRNO("socket creation failed");
       continue;
     }
     server_sock.reset(s);
@@ -122,7 +122,7 @@ static Socket setup_server() {
     }
 
     if (bind(server_sock, p->ai_addr, p->ai_addrlen) == -1) {
-      std::cerr << "bind: " << std::system_category().message(errno) << '\n';
+      LOG_ERRNO("bind");
       server_sock.reset(-1);
       continue;
     }
@@ -157,7 +157,7 @@ static void server_loop(Socket server_fd) {
         accept(server_fd, reinterpret_cast<sockaddr *>(&their_addr), &sin_size);
 
     if (new_fd == -1) {
-      std::cerr << "accept\n";
+      LOG_ERRNO("accept");
       continue;
     }
     // RAII Socket
@@ -167,7 +167,7 @@ static void server_loop(Socket server_fd) {
     inet_ntop(their_addr.ss_family,
               get_in_addr(reinterpret_cast<sockaddr *>(&their_addr)), s.data(),
               s.size());
-    std::clog << "got connection from " << s.data() << '\n';
+    LOG_INFO("got connection from ", s.data());
 
     pid_t pid = fork();
     if (pid == 0) {      // child
@@ -178,24 +178,23 @@ static void server_loop(Socket server_fd) {
       while (true) {
         numbytes = recv(accept_sock, buf.data(), buf.size(), 0);
         if (numbytes == -1) {
-          std::cerr << "recv\n";
-          accept_sock.reset();
-          _exit(1);
+          LOG_FATAL("recv err in child, exiting...");
         } else if (numbytes == 0) {
-          std::cerr << s.data() << " disconnected\n";
+          LOG_INFO(s.data(), " disconnected");
           break;
         }
         if (send(accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
             -1) {
-          std::cerr << "send\n";
+          LOG_ERRNO("send err in child");
+        } else {
+          LOG_INFO("echoed to ", s.data());
         }
-        std::clog << "echoed to " << s.data() << '\n';
       }
       accept_sock.reset();
       _exit(0);
       // parent
     } else if (pid == -1) {
-      std::cerr << "fork\n";
+      LOG_ERRNO("fork");
     }
     accept_sock.reset(); // close sender for parrent
   }
@@ -206,11 +205,11 @@ int main() {
     Socket server_fd = setup_server();
     setup_sigchld();
 
-    std::clog << "waiting connections...\n";
+    LOG_INFO("waiting connections...");
 
     server_loop(std::move(server_fd));
   } catch (const std::exception &e) {
-    std::cerr << "Err: " << e.what() << '\n';
+    LOG_ERROR("Exception caught: ", e.what());
     return -1;
   }
 }
