@@ -86,3 +86,7 @@ target_link_libraries(project_options INTERFACE
 # Main Executable
 add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
+
+# Sandbox Executable
+add_executable(tpool_sb src/threadpool_sandbox.cpp src/threadpool.cpp)
+target_link_libraries(tpool_sb PRIVATE project_options)
