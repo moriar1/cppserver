@@ -22,4 +22,5 @@ Checks:
   - -cppcoreguidelines-avoid-do-while # for LOG_*() macros
   - -fuchsia-statically-constructed-objects # for mutex in LOG_*() macros
   - -cppcoreguidelines-avoid-non-const-global-variables # for mutex in LOG_*() macros
+  - -performance-unnecessary-value-param # wrong borrow checking
 UseColor: true

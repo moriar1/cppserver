@@ -1,7 +1,8 @@
 #include "customlogger.hpp"
+#include "threadpool.hpp"
 #include <arpa/inet.h>
 #include <array>
-#include <csignal>
+#include <memory>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -41,6 +42,7 @@ class Socket {
 public:
   explicit Socket(int s = -1) : fd(s) {}
   ~Socket() {
+    LOG_DEBUG("closing socket");
     if (fd != -1) {
       close(fd);
     }
@@ -63,24 +65,17 @@ public:
   Socket(const Socket &) = delete;
   Socket &operator=(const Socket &) = delete;
 
-  // [[nodiscard]] int get() const { return fd; }
   void reset(int s = -1) {
     if (fd != -1) {
       close(fd);
     }
     fd = s;
   }
+  // [[nodiscard]] int get() const { return fd; }
   operator int() const { return fd; }
 };
 
 } // namespace
-
-static void sigchld_handler(int /* s */) noexcept {
-  int saved_errno = errno;
-  while (waitpid(-1, nullptr, WNOHANG) > 0) {
-  }
-  errno = saved_errno;
-}
 
 // TODO: use C++ methods
 static void *get_in_addr(struct sockaddr *sa) noexcept {
@@ -139,17 +134,30 @@ static Socket setup_server() {
   return server_sock;
 }
 
-static void setup_sigchld() {
-  struct sigaction sa{};
-  sa.sa_handler = sigchld_handler;
-  sa.sa_flags = SA_RESTART;
-  if (sigaction(SIGCHLD, &sa, nullptr) == -1) {
-    throw std::system_error(errno, std::system_category(), "sigaction");
+static void handle_client(std::shared_ptr<Socket> accept_sock, std::string ip) {
+  long numbytes = 0;
+  std::array<char, MAXDATASIZE> buf{};
+  while (true) {
+    numbytes = recv(*accept_sock, buf.data(), buf.size(), 0);
+    if (numbytes == -1) {
+      LOG_ERRNO("recv");
+      break;
+    }
+    if (numbytes == 0) {
+      LOG_INFO(ip, " disconnected");
+      break;
+    }
+    if (send(*accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
+        -1) {
+      LOG_ERRNO("send err in child");
+    } else {
+      LOG_INFO("echoed to ", ip);
+    }
   }
 }
 
 [[noreturn]]
-static void server_loop(Socket server_fd) {
+static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
   while (true) {
     sockaddr_storage their_addr{};
     socklen_t sin_size = sizeof their_addr;
@@ -161,53 +169,27 @@ static void server_loop(Socket server_fd) {
       continue;
     }
     // RAII Socket
-    Socket accept_sock{new_fd};
+    auto accept_sock = std::make_shared<Socket>(new_fd);
 
-    std::array<char, INET6_ADDRSTRLEN> s{};
+    std::array<char, INET6_ADDRSTRLEN> ip{};
     inet_ntop(their_addr.ss_family,
-              get_in_addr(reinterpret_cast<sockaddr *>(&their_addr)), s.data(),
-              s.size());
-    LOG_INFO("got connection from ", s.data());
+              get_in_addr(reinterpret_cast<sockaddr *>(&their_addr)), ip.data(),
+              ip.size());
+    LOG_INFO("got connection from ", ip.data());
 
-    pid_t pid = fork();
-    if (pid == 0) {      // child
-      server_fd.reset(); // close listener for child
-
-      long numbytes = 0;
-      std::array<char, MAXDATASIZE> buf{};
-      while (true) {
-        numbytes = recv(accept_sock, buf.data(), buf.size(), 0);
-        if (numbytes == -1) {
-          LOG_FATAL("recv err in child, exiting...");
-        } else if (numbytes == 0) {
-          LOG_INFO(s.data(), " disconnected");
-          break;
-        }
-        if (send(accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
-            -1) {
-          LOG_ERRNO("send err in child");
-        } else {
-          LOG_INFO("echoed to ", s.data());
-        }
-      }
-      accept_sock.reset();
-      _exit(0);
-      // parent
-    } else if (pid == -1) {
-      LOG_ERRNO("fork");
-    }
-    accept_sock.reset(); // close sender for parrent
+    thread_pool.submit(handle_client, std::move(accept_sock),
+                       std::string(ip.data()));
   }
 }
 
 int main() {
   try {
     Socket server_fd = setup_server();
-    setup_sigchld();
+    ThreadPool thread_pool{std::thread::hardware_concurrency()};
 
     LOG_INFO("waiting connections...");
 
-    server_loop(std::move(server_fd));
+    server_loop(std::move(server_fd), thread_pool);
   } catch (const std::exception &e) {
     LOG_ERROR("Exception caught: ", e.what());
     return -1;
