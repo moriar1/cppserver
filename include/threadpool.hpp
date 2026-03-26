@@ -1,11 +1,11 @@
 #pragma once
 
+#include "customlogger.hpp"
 #include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <vector>
 
 class ThreadPool {
   std::queue<std::function<void()>> qtasks;
@@ -18,7 +18,20 @@ public:
   explicit ThreadPool(unsigned);
   ~ThreadPool();
 
-  void submit(const std::function<void()> &);
+  template <typename F, typename... Args> void submit(F &&f, Args &&...args) {
+    if (shutdown) {
+      LOG_DEBUG("submit() called when shutown=true");
+      return;
+    }
+
+    // Assemble function with its args and push it in queue
+    auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
+    {
+      std::lock_guard lk(mut);
+      qtasks.emplace(std::move(task));
+    }
+    cond_task_submited.notify_one();
+  }
 
   ThreadPool() = delete;
   ThreadPool(const ThreadPool &) = delete;

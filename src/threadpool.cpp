@@ -1,6 +1,5 @@
 #include "customlogger.hpp"
 #include "threadpool.hpp"
-#include <mutex>
 
 ThreadPool::ThreadPool(unsigned nthreads) {
   LOG_DEBUG("ThreadPool creating");
@@ -16,12 +15,23 @@ ThreadPool::ThreadPool(unsigned nthreads) {
           break;
         }
 
-        LOG_DEBUG("Starting task executing...");
+        LOG_DEBUG("starting task execution...");
         auto task = qtasks.front();
+        if (!task) {
+          LOG_DEBUG("wrong task");
+          continue;
+        }
+
         qtasks.pop();
         lk.unlock();
-        task();
-        LOG_DEBUG("Finished task executing.");
+        try {
+          task();
+        } catch (const std::exception &e) {
+          LOG_ERROR("got exception from task: ", e.what());
+        } catch (...) {
+          LOG_ERROR("got exception from task");
+        }
+        LOG_DEBUG("finished task executing.");
       }
     });
   }
@@ -32,6 +42,7 @@ ThreadPool::~ThreadPool() {
     std::lock_guard lk(mut);
     shutdown = true;
   }
+
   cond_task_submited.notify_all();
   LOG_DEBUG("joining threads...");
   for (auto &thread : threads) {
@@ -41,11 +52,3 @@ ThreadPool::~ThreadPool() {
   }
   LOG_DEBUG("threads joined.");
 };
-
-void ThreadPool::submit(const std::function<void()> &f) {
-  {
-    std::lock_guard lk(mut);
-    qtasks.emplace(f);
-  }
-  cond_task_submited.notify_one();
-}
