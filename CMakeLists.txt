@@ -87,6 +87,8 @@ target_link_libraries(project_options INTERFACE
 add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 
-# Sandbox Executable
-add_executable(tpool_sb src/threadpool_sandbox.cpp src/threadpool.cpp)
-target_link_libraries(tpool_sb PRIVATE project_options)
+# Test
+enable_testing()
+add_executable(tpool_test tests/threadpool_test.cpp src/threadpool.cpp)
+target_link_libraries(tpool_test PRIVATE project_options)
+add_test(NAME ThreadPoolTest COMMAND tpool_test)

@@ -42,8 +42,8 @@ ThreadPool::~ThreadPool() {
     std::lock_guard lk(mut);
     shutdown = true;
   }
-
   cond_task_submited.notify_all();
+
   LOG_DEBUG("joining threads...");
   for (auto &thread : threads) {
     if (thread.joinable()) {
