@@ -1,13 +1,18 @@
 #pragma once
 
 #include <iostream>
+#include <mutex>
 #include <string_view>
 
 namespace customlogger {
 
+inline std::mutex glob_log_mut; // locks before writing in `cerr`
+
 template <typename... Args>
 void log_impl(std::string_view level, std::string_view func, int line,
               Args &&...args) {
+  std::lock_guard lk(glob_log_mut);
+
   std::cerr << "[" << level << "] " << func << ":" << line << ": ";
   (std::cerr << ... << std::forward<Args>(args)) << '\n'; // fold expression
 }
