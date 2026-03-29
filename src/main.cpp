@@ -1,4 +1,6 @@
+#include "connection.hpp"
 #include "customlogger.hpp"
+#include "socket.hpp"
 #include "threadpool.hpp"
 #include <arpa/inet.h>
 #include <array>
@@ -12,52 +14,8 @@
 
 inline constexpr const char *PORT = "3490";
 inline constexpr int BACKLOG = 10;
-inline constexpr size_t MAXDATASIZE = 4096;
 
 using AddrInfoPtr = std::unique_ptr<addrinfo, void (*)(addrinfo *)>;
-
-namespace {
-
-class Socket {
-  int fd = -1;
-
-public:
-  explicit Socket(int s = -1) : fd(s) {}
-  ~Socket() {
-    LOG_DEBUG("closing socket");
-    if (fd != -1) {
-      close(fd);
-    }
-  }
-
-  // Move
-  Socket(Socket &&other) noexcept : fd{other.fd} { other.fd = -1; }
-  Socket &operator=(Socket &&other) noexcept {
-    if (this != &other) {
-      if (fd != -1) {
-        close(fd);
-      }
-      fd = other.fd;
-      other.fd = -1;
-    }
-    return *this;
-  }
-
-  // Copy deleted
-  Socket(const Socket &) = delete;
-  Socket &operator=(const Socket &) = delete;
-
-  void reset(int s = -1) {
-    if (fd != -1) {
-      close(fd);
-    }
-    fd = s;
-  }
-  // [[nodiscard]] int get() const { return fd; }
-  operator int() const { return fd; }
-};
-
-} // namespace
 
 // TODO: use C++ methods
 static void *get_in_addr(struct sockaddr *sa) noexcept {
@@ -120,28 +78,6 @@ static Socket setup_server() {
   return server_sock;
 }
 
-static void handle_client(std::shared_ptr<Socket> accept_sock, std::string ip) {
-  long numbytes = 0;
-  std::array<char, MAXDATASIZE> buf{};
-  while (true) {
-    numbytes = recv(*accept_sock, buf.data(), buf.size(), 0);
-    if (numbytes == -1) {
-      LOG_ERRNO("recv");
-      break;
-    }
-    if (numbytes == 0) {
-      LOG_INFO(ip, " disconnected");
-      break;
-    }
-    if (send(*accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
-        -1) {
-      LOG_ERRNO("send");
-    } else {
-      LOG_INFO("echoed to ", ip);
-    }
-  }
-}
-
 [[noreturn]]
 static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
   while (true) {
@@ -154,17 +90,21 @@ static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
       LOG_ERRNO("accept");
       continue;
     }
-    // RAII Socket
+
+    // `ThreadPool` can't submit move-only functions (`Socket` is move-only), so
+    // `shared_ptr` for `Socket` is required
     auto accept_sock = std::make_shared<Socket>(new_fd);
 
+    // Get client's IP
     std::array<char, INET6_ADDRSTRLEN> ip{};
     inet_ntop(their_addr.ss_family,
               get_in_addr(reinterpret_cast<sockaddr *>(&their_addr)), ip.data(),
               ip.size());
     LOG_INFO("got connection from ", ip.data());
 
-    thread_pool.submit(handle_client, std::move(accept_sock),
-                       std::string(ip.data()));
+    thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
+      handle_client(std::move(*accept_sock), std::move(ip));
+    });
   }
 }
 
