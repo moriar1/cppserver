@@ -11,30 +11,12 @@
 #include <unistd.h>
 
 inline constexpr const char *PORT = "3490";
-
 inline constexpr int BACKLOG = 10;
 inline constexpr size_t MAXDATASIZE = 4096;
 
+using AddrInfoPtr = std::unique_ptr<addrinfo, void (*)(addrinfo *)>;
+
 namespace {
-
-class GetAddrInfo {
-  addrinfo *res{};
-
-public:
-  GetAddrInfo() = delete;
-  GetAddrInfo(const GetAddrInfo &) = delete;
-  GetAddrInfo(GetAddrInfo &&) = delete;
-  GetAddrInfo &operator=(const GetAddrInfo &) = delete;
-  GetAddrInfo &operator=(GetAddrInfo &&) = delete;
-  GetAddrInfo(const char *hostname, const char *servname,
-              const struct addrinfo *hints, struct addrinfo **l_res) {
-    if (int rv = getaddrinfo(hostname, servname, hints, l_res); rv != 0) {
-      throw std::runtime_error(std::string("gai: ") + gai_strerror(rv));
-    }
-    this->res = *l_res;
-  }
-  ~GetAddrInfo() { freeaddrinfo(res); }
-};
 
 class Socket {
   int fd = -1;
@@ -92,11 +74,15 @@ static Socket setup_server() {
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  addrinfo *servinfo = nullptr;
-  GetAddrInfo gai_raii{nullptr, PORT, &hints, &servinfo};
+  addrinfo *raw_servinfo = nullptr;
+  if (int rv = getaddrinfo(nullptr, PORT, &hints, &raw_servinfo); rv != 0) {
+    throw std::runtime_error(std::string("gai: ") + gai_strerror(rv));
+  }
+  AddrInfoPtr servinfo(raw_servinfo, freeaddrinfo);
 
   Socket server_sock{-1}; // RAII Socket
-  addrinfo *p = servinfo;
+  addrinfo *p = servinfo.get();
+
   for (; p != nullptr; p = p->ai_next) {
     std::array<char, INET6_ADDRSTRLEN> ipstr{};
     inet_ntop(p->ai_family, get_in_addr(p->ai_addr), ipstr.data(),
@@ -149,7 +135,7 @@ static void handle_client(std::shared_ptr<Socket> accept_sock, std::string ip) {
     }
     if (send(*accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
         -1) {
-      LOG_ERRNO("send err in child");
+      LOG_ERRNO("send");
     } else {
       LOG_INFO("echoed to ", ip);
     }
