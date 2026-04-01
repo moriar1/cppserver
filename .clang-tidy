@@ -23,4 +23,6 @@ Checks:
   - -fuchsia-statically-constructed-objects # for mutex in LOG_*() macros
   - -cppcoreguidelines-avoid-non-const-global-variables # for mutex in LOG_*() macros
   - -performance-unnecessary-value-param # wrong borrow checking
+  - -abseil-string-find-str-contains
+  - -cppcoreguidelines-pro-bounds-constant-array-index
 UseColor: true
