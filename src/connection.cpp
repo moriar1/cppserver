@@ -3,7 +3,6 @@
 #include "uniquefd.hpp"
 #include <array>
 #include <cerrno>
-#include <cstdio>
 #include <exception>
 #include <fcntl.h>
 #include <sstream>
@@ -18,6 +17,54 @@ static constexpr size_t MAXDATASIZE = 4096;
 static constexpr time_t TIMEOUT = 10;
 
 static HttpStatus handle_http_request(Socket &sock, std::string_view request);
+
+// Both simple and fast functions for sending HTTP status without body
+namespace http {
+
+static inline void send_400(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: "
+      "3\r\nConnection: close\r\n\r\n400";
+  sock.send_all(msg);
+}
+
+static inline void send_403(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "
+      "3\r\nConnection: close\r\n\r\n403";
+  sock.send_all(msg);
+}
+
+static inline void send_404(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: "
+      "3\r\nConnection: close\r\n\r\n404";
+  sock.send_all(msg);
+}
+
+static inline void send_405(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: "
+      "text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n405";
+  sock.send_all(msg);
+}
+
+static inline void send_431(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: "
+      "text/plain\r\nContent-Length: "
+      "3\r\nConnection: close\r\n\r\n431";
+  sock.send_all(msg);
+}
+
+static inline void send_500(Socket &sock) {
+  static constexpr std::string_view msg =
+      "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+      "text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n500";
+  sock.send_all(msg);
+}
+
+} // namespace http
 
 void handle_client(Socket sock, std::string ip) {
   try {
@@ -63,7 +110,7 @@ void handle_client(Socket sock, std::string ip) {
 
       // Too long headers => 431
       if (total_nbytes >= buf.size()) {
-        // TODO: send_431(sock);
+        http::send_431(sock);
         break;
       }
     }
@@ -84,7 +131,7 @@ void handle_client(Socket sock, std::string ip) {
 
 HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   if (request.find("Host:") == std::string::npos) {
-    // send_400(); // Bad request
+    http::send_400(sock); // Bad request
     return 400;
   }
 
@@ -94,19 +141,19 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   // NOTE: may add generating HTML document if directory is requested
   UniqueFd content_fd{open(path.c_str(), O_RDONLY)};
   if (content_fd == -1) {
-    LOG_ERRNO("open");
     if (errno == ENOENT) {
-      // send_404(sock); // TODO
+      http::send_404(sock);
       return 404;
     }
-    // send_500(sock); // TODO
+    LOG_ERRNO("open");
+    http::send_500(sock);
     return 500;
   }
   // Get file size
   struct stat st{};
   if (fstat(content_fd, &st) == -1) {
     LOG_ERRNO("stat");
-    // send_500(sock); // TODO
+    http::send_500(sock);
     return 500;
   }
   auto content_length = st.st_size;
@@ -115,8 +162,9 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   // const char *mime = get_mime_type(path, path.length());
   const std::string mime = "text/html"; // TODO: detect by file extension
   std::stringstream sstr;
-  sstr << "HTTP/1.1 200 OK\r\nContent-Length: " << content_length
-       << "\r\nContent-Type: " << mime << "\r\n\r\n";
+  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << mime
+       << "\r\nContent-Length: " << content_length
+       << "\r\nConnection: close\r\n\r\n";
   if (sock.send_all(sstr.str()) == -1) {
     LOG_ERRNO("send");
     return 0;
