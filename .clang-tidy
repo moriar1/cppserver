@@ -25,4 +25,7 @@ Checks:
   - -performance-unnecessary-value-param # wrong borrow checking
   - -abseil-string-find-str-contains
   - -cppcoreguidelines-pro-bounds-constant-array-index
+  - -android-cloexec-open
+  - -cppcoreguidelines-pro-type-vararg # to call `open()` from `fcntl.h` 
+  - -hicpp-vararg # see above one
 UseColor: true
