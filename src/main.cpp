@@ -1,7 +1,7 @@
 #include "connection.hpp"
 #include "customlogger.hpp"
-#include "socket.hpp"
 #include "threadpool.hpp"
+#include "uniquefd.hpp"
 #include <arpa/inet.h>
 #include <array>
 #include <memory>
