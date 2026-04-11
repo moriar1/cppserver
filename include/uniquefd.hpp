@@ -4,6 +4,7 @@
 #include <utility>
 
 class UniqueFd {
+protected:
   int fd = -1;
 
 public:
@@ -35,9 +36,8 @@ public:
       close(fd);
     }
     fd = s;
+    LOG_DEBUG("fd reset from ", fd, " to ", s);
   }
 
   operator int() const { return fd; }
 };
-
-using Socket = UniqueFd;

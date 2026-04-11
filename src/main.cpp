@@ -1,7 +1,7 @@
 #include "connection.hpp"
 #include "customlogger.hpp"
+#include "socket.hpp"
 #include "threadpool.hpp"
-#include "uniquefd.hpp"
 #include <arpa/inet.h>
 #include <array>
 #include <memory>
@@ -60,7 +60,7 @@ static Socket setup_server() {
       throw std::system_error(errno, std::system_category(), "setsockopt");
     }
 
-    if (bind(server_sock, p->ai_addr, p->ai_addrlen) == -1) {
+    if (server_sock.bind(p->ai_addr, p->ai_addrlen) == -1) {
       LOG_ERRNO("bind");
       server_sock.reset(-1);
       continue;
@@ -72,7 +72,7 @@ static Socket setup_server() {
     throw std::runtime_error("failed to bind");
   }
 
-  if (listen(server_sock, BACKLOG) == -1) {
+  if (server_sock.listen(BACKLOG) == -1) {
     throw std::system_error(errno, std::system_category(), "listen");
   }
   return server_sock;
@@ -84,7 +84,7 @@ static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
     sockaddr_storage their_addr{};
     socklen_t sin_size = sizeof their_addr;
     int new_fd =
-        accept(server_fd, reinterpret_cast<sockaddr *>(&their_addr), &sin_size);
+        server_fd.accept(reinterpret_cast<sockaddr *>(&their_addr), &sin_size);
 
     if (new_fd == -1) {
       LOG_ERRNO("accept");

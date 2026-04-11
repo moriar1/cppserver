@@ -11,11 +11,6 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <system_error>
-
-#ifdef __linux__
-#include <sys/sendfile.h>
-#endif
 
 using HttpStatus = unsigned;
 
@@ -24,76 +19,66 @@ static constexpr time_t TIMEOUT = 10;
 
 static HttpStatus handle_http_request(Socket &sock, std::string_view request);
 
-static void send_all(Socket &sock, std::string_view msg) {
-  ssize_t n = 0;
-
-  while (!msg.empty()) {
-    if ((n = send(sock, msg.data(), msg.size(), 0)) == -1) {
-      if (errno == EINTR) {
-        continue;
-      }
-      throw std::system_error(errno, std::system_category(), "send");
-    }
-    msg.remove_prefix(static_cast<size_t>(n));
-  }
-}
-
 void handle_client(Socket sock, std::string ip) {
-  // Set timeout for connection
-  const struct timeval time = {TIMEOUT, 0};
-  if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
-    LOG_ERRNO("failed set rcv timout");
-  }
-  if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &time, sizeof(time)) != 0) {
-    LOG_ERRNO("failed set snd timout");
-  }
-
-  // Recieve requests (HTTP headers)
-  ssize_t nbytes = 0;
-  size_t total_nbytes = 0;
-  std::array<char, MAXDATASIZE> buf;
-  while (true) {
-    size_t spaceleft = buf.size() - total_nbytes;
-    nbytes = recv(sock, &buf[total_nbytes], spaceleft, 0);
-
-    if (nbytes < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      if (errno == EAGAIN) {
-        LOG_INFO(ip, " timeout");
-      } else {
-        LOG_ERRNO("recv");
-      }
-      return;
-    }
-
-    if (nbytes == 0) {
-      LOG_INFO(ip, " failed get request headers: client disconnected");
-      break;
-    }
-
-    total_nbytes += static_cast<size_t>(nbytes);
-    if (std::string_view(buf.data(), total_nbytes).find("\r\n\r\n") !=
-        std::string::npos) { // found end of headers
-      break;
-    }
-
-    // Too long headers => 431
-    if (total_nbytes >= buf.size()) {
-      // TODO: send_431(sock);
-      break;
-    }
-  }
-  std::string_view request(buf.data(), total_nbytes);
-
   try {
+    // Set timeout for connection
+    const struct timeval time = {TIMEOUT, 0};
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
+      LOG_ERRNO("failed set rcv timout");
+    }
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &time, sizeof(time)) != 0) {
+      LOG_ERRNO("failed set snd timout");
+    }
+
+    // Recieve requests (HTTP headers)
+    ssize_t nbytes = 0;
+    size_t total_nbytes = 0;
+    std::array<char, MAXDATASIZE> buf;
+    while (true) {
+      size_t spaceleft = buf.size() - total_nbytes;
+      nbytes = sock.recv(&buf[total_nbytes], spaceleft, 0);
+
+      if (nbytes < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        if (errno == EAGAIN) {
+          LOG_INFO(ip, " timeout");
+        } else {
+          LOG_ERRNO("recv");
+        }
+        return;
+      }
+
+      if (nbytes == 0) {
+        LOG_INFO(ip, " failed get request headers: client disconnected");
+        break;
+      }
+
+      total_nbytes += static_cast<size_t>(nbytes);
+      if (std::string_view(buf.data(), total_nbytes).find("\r\n\r\n") !=
+          std::string::npos) { // found end of headers
+        break;
+      }
+
+      // Too long headers => 431
+      if (total_nbytes >= buf.size()) {
+        // TODO: send_431(sock);
+        break;
+      }
+    }
+    std::string_view request(buf.data(), total_nbytes);
+
     // Send requested file
     HttpStatus s = handle_http_request(sock, request);
-    LOG_INFO("client ", ip, " status: ", s, ". Closing connection...");
+    if (s == 0) {
+      LOG_INFO("client ", ip,
+               " error occured in `send()` or `sendfile()` call");
+    } else {
+      LOG_INFO("client ", ip, " status: ", s, ", closing connection...");
+    }
   } catch (const std::exception &e) {
-    // NOTE: only `send_all()` throws exception
-    LOG_ERROR("client ", ip, " send_all() exception: ", e.what());
+    LOG_INFO("client ", ip, " unexpected error: ", e.what());
   }
 }
 
@@ -132,25 +117,29 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   std::stringstream sstr;
   sstr << "HTTP/1.1 200 OK\r\nContent-Length: " << content_length
        << "\r\nContent-Type: " << mime << "\r\n\r\n";
-  send_all(sock, sstr.str()); // TODO
+  if (sock.send_all(sstr.str()) == -1) {
+    LOG_ERRNO("send");
+    return 0;
+  }
 
 #ifdef __linux__
   ssize_t total_sent = 0;
   ssize_t sent = 1;
 
   while (total_sent < content_length) {
-    sent = sendfile(sock, content_fd, nullptr, content_length - total_sent);
+    sent = sock.sendfile(content_fd, nullptr, content_length - total_sent);
     if (sent == -1) {
       if (errno == EINTR) {
         continue;
       }
       if (errno == EAGAIN) {
         LOG_INFO("client timeout (couldn't sendfile)");
-        return 200; // sendfile error, but we sent `200 OK` in headers
+        return 0; // sendfile error, but we sent `200 OK` in headers
       }
       LOG_ERRNO("sendfile");
-      return 200;
+      return 0;
     }
+
     if (sent == 0) {
       break;
     }
@@ -158,14 +147,14 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   }
 #elif defined __FreeBSD__
   // NOTE: in FreeBSD loop is required only for non-block I/O
-  if (sendfile(content_fd, sock, 0, static_cast<size_t>(content_length),
-               nullptr, nullptr, 0) == -1) {
+  if (sock.sendfile(content_fd, 0, static_cast<size_t>(content_length), nullptr,
+                    nullptr, 0) == -1) {
     if (errno == EAGAIN) {
       LOG_INFO("client timeout (couldn't sendfile)");
     } else {
       LOG_ERRNO("sendfile");
     }
-    return 200; // sendfile error, but we sent `200 OK` in headers
+    return 0; // sendfile error, but we sent `200 OK` in headers
   }
 #endif
   return 200;
