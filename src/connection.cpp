@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <exception>
 #include <fcntl.h>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -129,13 +130,54 @@ void handle_client(Socket sock, std::string ip) {
   }
 }
 
+static std::string_view get_mime_type(std::string_view path) {
+  size_t dpos = path.find_last_of('.');
+  if (dpos == std::string_view::npos) {
+    return "application/octet-stream";
+  }
+  std::string_view ext = path.substr(dpos);
+
+  if (ext == ".html" || ext == ".htm") {
+    return "text/html";
+  }
+  if (ext == ".jpg" || ext == ".jpeg") {
+    return "image/jpeg";
+  }
+  if (ext == ".js") {
+    return "application/javascript";
+  }
+  if (ext == ".css") {
+    return "text/css";
+  }
+  return "application/octet-stream";
+}
+
 HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   if (request.find("Host:") == std::string::npos) {
-    http::send_400(sock); // Bad request
+    http::send_400(sock);
     return 400;
   }
+  if (request.substr(0, 5) != "GET /") {
+    http::send_405(sock);
+    return 405;
+  }
+  // Remove `GET /` from `request`
+  request.remove_prefix(5);
 
-  std::string path = "index.html"; // TODO: parse from request
+  // Find position where file path ends and extract file path itself
+  // TODO: add HTTP encoding
+  auto pos = request.find(' ');
+  std::string path = (pos == 0 || pos == std::string::npos)
+                         ? "index.html"
+                         : std::string(request.substr(0, pos));
+
+  // Prevent Path Traversal (no `../../` in path)
+  if (std::filesystem::weakly_canonical(path).string().find(
+          std::filesystem::current_path().string() +
+          std::filesystem::path::preferred_separator) != 0) {
+    http::send_403(sock);
+    return 403;
+  }
 
   // Prepare file
   // NOTE: may add generating HTML document if directory is requested
@@ -159,10 +201,8 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   auto content_length = st.st_size;
 
   // Send headers
-  // const char *mime = get_mime_type(path, path.length());
-  const std::string mime = "text/html"; // TODO: detect by file extension
   std::stringstream sstr;
-  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << mime
+  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << get_mime_type(path)
        << "\r\nContent-Length: " << content_length
        << "\r\nConnection: close\r\n\r\n";
   if (sock.send_all(sstr.str()) == -1) {
