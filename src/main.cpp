@@ -1,5 +1,5 @@
-#include "connection.hpp"
 #include "customlogger.hpp"
+#include "httphandler.hpp"
 #include "socket.hpp"
 #include "threadpool.hpp"
 #include <arpa/inet.h>
@@ -103,7 +103,7 @@ static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
     LOG_INFO("got connection from ", ip.data());
 
     thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
-      handle_client(std::move(*accept_sock), std::move(ip));
+      http::handle_client(std::move(*accept_sock), std::move(ip));
     });
   }
 }

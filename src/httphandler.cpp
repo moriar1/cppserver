@@ -1,5 +1,6 @@
-#include "connection.hpp"
 #include "customlogger.hpp"
+#include "httphandler.hpp"
+#include "socket.hpp"
 #include "uniquefd.hpp"
 #include <array>
 #include <cerrno>
@@ -12,15 +13,15 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-using HttpStatus = unsigned;
+// Both simple and fast functions for sending HTTP status without body
+namespace http {
 
+using HttpStatus = unsigned;
 static constexpr size_t MAXDATASIZE = 4096;
 static constexpr time_t TIMEOUT = 10;
 
 static HttpStatus handle_http_request(Socket &sock, std::string_view request);
-
-// Both simple and fast functions for sending HTTP status without body
-namespace http {
+static HttpStatus send_file_response(Socket &sock, const std::string &path);
 
 static inline void send_400(Socket &sock) {
   static constexpr std::string_view msg =
@@ -64,8 +65,6 @@ static inline void send_500(Socket &sock) {
       "text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n500";
   sock.send_all(msg);
 }
-
-} // namespace http
 
 void handle_client(Socket sock, std::string ip) {
   try {
@@ -179,9 +178,14 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
     return 403;
   }
 
+  return send_file_response(sock, /* content_fd, */ path);
+}
+
+// TODO: pass `const Socket&`
+HttpStatus send_file_response(Socket &sock, const std::string &content_path) {
   // Prepare file
   // NOTE: may add generating HTML document if directory is requested
-  UniqueFd content_fd{open(path.c_str(), O_RDONLY)};
+  UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
   if (content_fd == -1) {
     if (errno == ENOENT) {
       http::send_404(sock);
@@ -198,11 +202,11 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
     http::send_500(sock);
     return 500;
   }
-  auto content_length = st.st_size;
+  auto content_length = static_cast<size_t>(st.st_size);
 
   // Send headers
   std::stringstream sstr;
-  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << get_mime_type(path)
+  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << get_mime_type(content_path)
        << "\r\nContent-Length: " << content_length
        << "\r\nConnection: close\r\n\r\n";
   if (sock.send_all(sstr.str()) == -1) {
@@ -211,7 +215,7 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   }
 
 #ifdef __linux__
-  ssize_t total_sent = 0;
+  size_t total_sent = 0;
   ssize_t sent = 1;
 
   while (total_sent < content_length) {
@@ -235,8 +239,7 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   }
 #elif defined __FreeBSD__
   // NOTE: in FreeBSD loop is required only for non-block I/O
-  if (sock.sendfile(content_fd, 0, static_cast<size_t>(content_length), nullptr,
-                    nullptr, 0) == -1) {
+  if (sock.sendfile(content_fd, 0, content_length, nullptr, nullptr, 0) == -1) {
     if (errno == EAGAIN) {
       LOG_INFO("client timeout (couldn't sendfile)");
     } else {
@@ -247,3 +250,5 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
 #endif
   return 200;
 }
+
+} // namespace http
