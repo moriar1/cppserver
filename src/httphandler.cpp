@@ -13,58 +13,53 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-// Both simple and fast functions for sending HTTP status without body
 namespace http {
 
 using HttpStatus = unsigned;
 static constexpr size_t MAXDATASIZE = 4096;
 static constexpr time_t TIMEOUT = 10;
 
-static HttpStatus handle_http_request(Socket &sock, std::string_view request);
-static HttpStatus send_file_response(Socket &sock, const std::string &path);
+static HttpStatus handle_http_request(const Socket &sock,
+                                      std::string_view request);
+static HttpStatus send_file_response(const Socket &sock,
+                                     const std::string &path);
 
-static inline void send_400(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: "
-      "3\r\nConnection: close\r\n\r\n400";
-  sock.send_all(msg);
+[[nodiscard]] static inline HttpStatus
+send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
+  if (sock.send_all(msg) == -1) {
+    LOG_ERRNO("failed send response fot status ", status);
+    return 0;
+  }
+  return status;
 }
 
-static inline void send_403(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "
-      "3\r\nConnection: close\r\n\r\n403";
-  sock.send_all(msg);
+// clang-format off
+// Both simple and fast functions for sending HTTP status
+[[nodiscard]] static inline HttpStatus send_400(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n400";
+  return send_response(sock, 400, msg);
 }
-
-static inline void send_404(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: "
-      "3\r\nConnection: close\r\n\r\n404";
-  sock.send_all(msg);
+[[nodiscard]] static inline HttpStatus send_403(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n403";
+  return send_response(sock,  403,  msg);
 }
-
-static inline void send_405(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: "
-      "text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n405";
-  sock.send_all(msg);
+[[nodiscard]] static inline HttpStatus send_404(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n404";
+  return send_response(sock,  404,  msg);
 }
-
-static inline void send_431(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: "
-      "text/plain\r\nContent-Length: "
-      "3\r\nConnection: close\r\n\r\n431";
-  sock.send_all(msg);
+[[nodiscard]] static inline HttpStatus send_405(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n405";
+  return send_response(sock,  405,  msg);
 }
-
-static inline void send_500(Socket &sock) {
-  static constexpr std::string_view msg =
-      "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
-      "text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n500";
-  sock.send_all(msg);
+[[nodiscard]] static inline HttpStatus send_431(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n431";
+  return send_response(sock,  431,  msg);
 }
+[[nodiscard]] static inline HttpStatus send_500(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n500";
+  return send_response(sock,  500,  msg);
+}
+// clang-format on
 
 void handle_client(Socket sock, std::string ip) {
   try {
@@ -99,7 +94,7 @@ void handle_client(Socket sock, std::string ip) {
 
       if (nbytes == 0) {
         LOG_INFO(ip, " failed get request headers: client disconnected");
-        break;
+        return;
       }
 
       total_nbytes += static_cast<size_t>(nbytes);
@@ -110,8 +105,8 @@ void handle_client(Socket sock, std::string ip) {
 
       // Too long headers => 431
       if (total_nbytes >= buf.size()) {
-        http::send_431(sock);
-        break;
+        (void)http::send_431(sock);
+        return;
       }
     }
     std::string_view request(buf.data(), total_nbytes);
@@ -151,14 +146,12 @@ static std::string_view get_mime_type(std::string_view path) {
   return "application/octet-stream";
 }
 
-HttpStatus handle_http_request(Socket &sock, std::string_view request) {
+HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
   if (request.find("Host:") == std::string::npos) {
-    http::send_400(sock);
-    return 400;
+    return http::send_400(sock);
   }
   if (request.substr(0, 5) != "GET /") {
-    http::send_405(sock);
-    return 405;
+    return http::send_405(sock);
   }
   // Remove `GET /` from `request`
   request.remove_prefix(5);
@@ -174,33 +167,29 @@ HttpStatus handle_http_request(Socket &sock, std::string_view request) {
   if (std::filesystem::weakly_canonical(path).string().find(
           std::filesystem::current_path().string() +
           std::filesystem::path::preferred_separator) != 0) {
-    http::send_403(sock);
-    return 403;
+    return http::send_403(sock);
   }
 
-  return send_file_response(sock, /* content_fd, */ path);
+  return send_file_response(sock, path);
 }
 
-// TODO: pass `const Socket&`
-HttpStatus send_file_response(Socket &sock, const std::string &content_path) {
+HttpStatus send_file_response(const Socket &sock,
+                              const std::string &content_path) {
   // Prepare file
   // NOTE: may add generating HTML document if directory is requested
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
   if (content_fd == -1) {
     if (errno == ENOENT) {
-      http::send_404(sock);
-      return 404;
+      return http::send_404(sock);
     }
     LOG_ERRNO("open");
-    http::send_500(sock);
-    return 500;
+    return http::send_500(sock);
   }
   // Get file size
   struct stat st{};
   if (fstat(content_fd, &st) == -1) {
     LOG_ERRNO("stat");
-    http::send_500(sock);
-    return 500;
+    return http::send_500(sock);
   }
   auto content_length = static_cast<size_t>(st.st_size);
 

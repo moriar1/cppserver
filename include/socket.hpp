@@ -13,23 +13,28 @@ class Socket : public UniqueFd {
   using UniqueFd::UniqueFd;
 
 public:
-  int listen(int backlog) { return ::listen(fd, backlog); }
-  int setsockopt(int level, int optname, const void *optval, socklen_t optlen) {
+  [[nodiscard]] int listen(int backlog) const noexcept {
+    return ::listen(fd, backlog);
+  }
+  int setsockopt(int level, int optname, const void *optval,
+                 socklen_t optlen) const noexcept {
     return ::setsockopt(fd, level, optname, optval, optlen);
   }
-  int bind(const struct sockaddr *ai_addr, socklen_t ai_addrlen) {
+  [[nodiscard]] int bind(const struct sockaddr *ai_addr,
+                         socklen_t ai_addrlen) const noexcept {
     return ::bind(fd, ai_addr, ai_addrlen);
   }
-  int accept(sockaddr *addr, socklen_t *addrlen) {
+  [[nodiscard]] int accept(sockaddr *addr, socklen_t *addrlen) const noexcept {
     return ::accept(fd, addr, addrlen);
   }
-  ssize_t recv(void *buf, size_t len, int flags) {
+  [[nodiscard]] ssize_t recv(void *buf, size_t len, int flags) const noexcept {
     return ::recv(fd, buf, len, flags);
   }
-  ssize_t send(const void *msg, size_t len, int flags) {
+  [[nodiscard]] ssize_t send(const void *msg, size_t len,
+                             int flags) const noexcept {
     return ::send(fd, msg, len, flags);
   }
-  int send_all(std::string_view msg) {
+  [[nodiscard]] int send_all(std::string_view msg) const noexcept {
     ssize_t n = 0;
 
     while (!msg.empty()) {
@@ -45,12 +50,14 @@ public:
   }
 
 #ifdef __linux__
-  ssize_t sendfile(int content_fd, off_t *offset, size_t count) {
+  [[nodiscard]] ssize_t sendfile(int content_fd, off_t *offset,
+                                 size_t count) const noexcept {
     return ::sendfile(fd, content_fd, offset, count);
   }
 #elif defined __FreeBSD__
-  int sendfile(int content_fd, off_t offset, size_t nbytes, sf_hdtr *hdtr,
-               off_t *sbytes, int flags) {
+  [[nodiscard]] int sendfile(int content_fd, off_t offset, size_t nbytes,
+                             sf_hdtr *hdtr, off_t *sbytes,
+                             int flags) const noexcept {
     return ::sendfile(content_fd, fd, offset, nbytes, hdtr, sbytes, flags);
   }
 #endif

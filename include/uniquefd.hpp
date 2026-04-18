@@ -39,5 +39,5 @@ public:
     LOG_DEBUG("fd reset from ", fd, " to ", s);
   }
 
-  operator int() const { return fd; }
+  [[nodiscard]] operator int() const noexcept { return fd; }
 };
