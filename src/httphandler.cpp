@@ -35,10 +35,6 @@ send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
 
 // clang-format off
 // Both simple and fast functions for sending HTTP status
-[[nodiscard]] static inline HttpStatus send_400(const Socket &sock) {
-  static constexpr std::string_view msg = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n400";
-  return send_response(sock, 400, msg);
-}
 [[nodiscard]] static inline HttpStatus send_403(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n403";
   return send_response(sock,  403,  msg);
@@ -147,9 +143,6 @@ static std::string_view get_mime_type(std::string_view path) {
 }
 
 HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
-  if (request.find("Host:") == std::string::npos) {
-    return http::send_400(sock);
-  }
   if (request.substr(0, 5) != "GET /") {
     return http::send_405(sock);
   }
