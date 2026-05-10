@@ -67,7 +67,7 @@ static Socket setup_server() {
     server_sock.reset(s);
 
     const int yes = 1;
-    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) ==
+    if (server_sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) ==
         -1) {
       throw std::system_error(errno, std::system_category(), "setsockopt");
     }

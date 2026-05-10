@@ -61,10 +61,10 @@ void handle_client(Socket sock, std::string ip) {
   try {
     // Set timeout for connection
     const struct timeval time = {TIMEOUT, 0};
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
+    if (sock.setsockopt(SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
       LOG_ERRNO("failed set rcv timout");
     }
-    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &time, sizeof(time)) != 0) {
+    if (sock.setsockopt(SOL_SOCKET, SO_SNDTIMEO, &time, sizeof(time)) != 0) {
       LOG_ERRNO("failed set snd timout");
     }
 
@@ -171,7 +171,7 @@ HttpStatus send_file_response(const Socket &sock,
   // Prepare file
   // NOTE: may add generating HTML document if directory is requested
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
-  if (content_fd == -1) {
+  if (content_fd.get() == -1) {
     if (errno == ENOENT) {
       return http::send_404(sock);
     }
@@ -180,7 +180,7 @@ HttpStatus send_file_response(const Socket &sock,
   }
   // Get file size
   struct stat st{};
-  if (fstat(content_fd, &st) == -1) {
+  if (fstat(content_fd.get(), &st) == -1) {
     LOG_ERRNO("stat");
     return http::send_500(sock);
   }
@@ -201,7 +201,8 @@ HttpStatus send_file_response(const Socket &sock,
   ssize_t sent = 1;
 
   while (total_sent < content_length) {
-    sent = sock.sendfile(content_fd, nullptr, content_length - total_sent);
+    sent =
+        sock.sendfile(content_fd.get(), nullptr, content_length - total_sent);
     if (sent == -1) {
       if (errno == EINTR) {
         continue;
@@ -221,7 +222,8 @@ HttpStatus send_file_response(const Socket &sock,
   }
 #elif defined __FreeBSD__
   // NOTE: in FreeBSD loop is required only for non-block I/O
-  if (sock.sendfile(content_fd, 0, content_length, nullptr, nullptr, 0) == -1) {
+  if (sock.sendfile(content_fd.get(), 0, content_length, nullptr, nullptr, 0) ==
+      -1) {
     if (errno == EAGAIN) {
       LOG_INFO("client timeout (couldn't sendfile)");
     } else {

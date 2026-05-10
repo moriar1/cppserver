@@ -18,17 +18,15 @@ public:
   explicit ThreadPool(unsigned);
   ~ThreadPool();
 
-  template <typename F, typename... Args> void submit(F &&f, Args &&...args) {
+  template <typename F> void submit(F &&f) {
     if (shutdown) {
       LOG_DEBUG("submit() called when shutown=true");
       return;
     }
 
-    // Assemble function with its args and push it in queue
-    auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     {
       std::lock_guard lk(mut);
-      qtasks.emplace(std::move(task));
+      qtasks.emplace([task = std::forward<F>(f)]() mutable { task(); });
     }
     cond_task_submited.notify_one();
   }
