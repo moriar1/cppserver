@@ -17,13 +17,27 @@ inline constexpr int BACKLOG = 10;
 
 using AddrInfoPtr = std::unique_ptr<addrinfo, void (*)(addrinfo *)>;
 
-// TODO: use C++ methods
-static void *get_in_addr(struct sockaddr *sa) noexcept {
+static std::array<char, INET6_ADDRSTRLEN> get_ip(const sockaddr *sa) {
+  const void *addr_ptr = nullptr;
   if (sa->sa_family == AF_INET) {
-    return &((reinterpret_cast<sockaddr_in *>(sa))->sin_addr);
+    addr_ptr = &reinterpret_cast<const sockaddr_in *>(sa)->sin_addr;
+  } else if (sa->sa_family == AF_INET6) {
+    addr_ptr = &reinterpret_cast<const sockaddr_in6 *>(sa)->sin6_addr;
+  } else {
+    throw std::runtime_error("unsupported sa_family"); // unlikely
   }
 
-  return &((reinterpret_cast<sockaddr_in6 *>(sa))->sin6_addr);
+  std::array<char, INET6_ADDRSTRLEN> ipstr{};
+  inet_ntop(sa->sa_family, addr_ptr, ipstr.data(), ipstr.size());
+  return ipstr;
+}
+
+static std::array<char, INET6_ADDRSTRLEN> get_ip(const addrinfo *ai) {
+  return get_ip(ai->ai_addr);
+}
+
+static std::array<char, INET6_ADDRSTRLEN> get_ip(const sockaddr_storage &ss) {
+  return get_ip(reinterpret_cast<const sockaddr *>(&ss));
 }
 
 static Socket setup_server() {
@@ -42,9 +56,7 @@ static Socket setup_server() {
   addrinfo *p = servinfo.get();
 
   for (; p != nullptr; p = p->ai_next) {
-    std::array<char, INET6_ADDRSTRLEN> ipstr{};
-    inet_ntop(p->ai_family, get_in_addr(p->ai_addr), ipstr.data(),
-              ipstr.size());
+    std::array<char, INET6_ADDRSTRLEN> ipstr = get_ip(p);
     LOG_INFO("binding to ", ipstr.data());
 
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -95,11 +107,7 @@ static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
     // `shared_ptr` for `Socket` is required
     auto accept_sock = std::make_shared<Socket>(new_fd);
 
-    // Get client's IP
-    std::array<char, INET6_ADDRSTRLEN> ip{};
-    inet_ntop(their_addr.ss_family,
-              get_in_addr(reinterpret_cast<sockaddr *>(&their_addr)), ip.data(),
-              ip.size());
+    std::array<char, INET6_ADDRSTRLEN> ip = get_ip(their_addr);
     LOG_INFO("got connection from ", ip.data());
 
     thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
