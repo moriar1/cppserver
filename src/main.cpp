@@ -2,8 +2,10 @@
 #include "httphandler.hpp"
 #include "socket.hpp"
 #include "threadpool.hpp"
+#include "uniquefd.hpp"
 #include <arpa/inet.h>
 #include <array>
+#include <csignal>
 #include <memory>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -16,6 +18,29 @@ inline constexpr const char *PORT = "3490";
 inline constexpr int BACKLOG = 10;
 
 using AddrInfoPtr = std::unique_ptr<addrinfo, void (*)(addrinfo *)>;
+
+struct Pipe {
+  UniqueFd read;
+  UniqueFd write;
+
+  static Pipe create() {
+    int fds[2];
+    if (pipe(&fds[0]) < 0) {
+      throw std::system_error(errno, std::system_category(), "pipe");
+    }
+    return {UniqueFd(fds[0]), UniqueFd(fds[1])};
+  }
+};
+
+// Access static pipe only using this function
+static Pipe &get_pipe() {
+  static Pipe instance = Pipe::create();
+  return instance;
+}
+
+static void fatalsig(int __attribute__((unused)) signum) {
+  write(get_pipe().write.get(), "f", 1); // interrupt `select()` waiting
+}
 
 static std::array<char, INET6_ADDRSTRLEN> get_ip(const sockaddr *sa) {
   const void *addr_ptr = nullptr;
@@ -90,29 +115,50 @@ static Socket setup_server() {
   return server_sock;
 }
 
-[[noreturn]]
-static void server_loop(Socket server_fd, ThreadPool &thread_pool) {
+static void server_loop(Socket server_sock, ThreadPool &thread_pool) {
   while (true) {
-    sockaddr_storage their_addr{};
-    socklen_t sin_size = sizeof their_addr;
-    int new_fd =
-        server_fd.accept(reinterpret_cast<sockaddr *>(&their_addr), &sin_size);
+    fd_set readset;
+    FD_ZERO(&readset);
+    FD_SET(get_pipe().read.get(), &readset);
+    FD_SET(server_sock.get(), &readset);
 
-    if (new_fd == -1) {
-      LOG_ERRNO("accept");
-      continue;
+    int max_fd = 1 + std::max(get_pipe().read.get(), server_sock.get());
+    if (select(max_fd, &readset, nullptr, nullptr, nullptr) == -1) {
+      if (errno == EINTR) {
+        continue; // interrupted by signal
+      }
+      LOG_ERRNO("select");
     }
 
-    // `ThreadPool` can't submit move-only functions (`Socket` is move-only), so
-    // `shared_ptr` for `Socket` is required
-    auto accept_sock = std::make_shared<Socket>(new_fd);
+    if (FD_ISSET(get_pipe().read.get(), &readset)) {
+      char dummy{};
+      read(get_pipe().read.get(), &dummy, 1);
+      LOG_INFO("shutdown singal recvieved");
+      break;
+    }
 
-    std::array<char, INET6_ADDRSTRLEN> ip = get_ip(their_addr);
-    LOG_INFO("got connection from ", ip.data());
+    if (FD_ISSET(server_sock.get(), &readset)) {
+      sockaddr_storage their_addr{};
+      socklen_t sin_size = sizeof their_addr;
+      int new_fd = server_sock.accept(reinterpret_cast<sockaddr *>(&their_addr),
+                                      &sin_size);
 
-    thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
-      http::handle_client(std::move(*accept_sock), std::move(ip));
-    });
+      if (new_fd == -1) {
+        LOG_ERRNO("accept");
+        continue;
+      }
+
+      // `ThreadPool` can't submit move-only functions (`Socket` is move-only),
+      // so `shared_ptr` for `Socket` is required
+      auto accept_sock = std::make_shared<Socket>(new_fd);
+
+      std::array<char, INET6_ADDRSTRLEN> ip = get_ip(their_addr);
+      LOG_INFO("got connection from ", ip.data());
+
+      thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
+        http::handle_client(std::move(*accept_sock), std::move(ip));
+      });
+    }
   }
 }
 
@@ -120,9 +166,18 @@ int main() {
   try {
     Socket server_fd = setup_server();
     ThreadPool thread_pool{std::thread::hardware_concurrency()};
+    [[maybe_unused]] auto &p = get_pipe(); // static pipe init for signals
+
+    // Set signal handlers
+    struct sigaction action{};
+    action.sa_handler = fatalsig;
+    sigaction(SIGTERM, &action, nullptr);
+    sigaction(SIGINT, &action, nullptr);
+    // Ignore SIGPIPE
+    action.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &action, nullptr);
 
     LOG_INFO("waiting connections...");
-
     server_loop(std::move(server_fd), thread_pool);
   } catch (const std::exception &e) {
     LOG_ERROR("Exception caught: ", e.what());

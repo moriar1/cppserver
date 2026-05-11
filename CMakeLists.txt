@@ -34,7 +34,8 @@ target_compile_options(project_warnings INTERFACE
     $<$<CXX_COMPILER_ID:Clang>:-fcolor-diagnostics -Weverything
         -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-padded
         -Wno-weak-vtables -Wno-unused-member-function -Wno-exit-time-destructors
-        -Wno-global-constructors -Wno-shadow-uncaptured-local>
+        -Wno-global-constructors -Wno-shadow-uncaptured-local
+        -Wno-unsafe-buffer-usage>
 )
 
 # Hardening

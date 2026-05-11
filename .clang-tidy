@@ -26,6 +26,7 @@ Checks:
   - -abseil-string-find-str-contains
   - -cppcoreguidelines-pro-bounds-constant-array-index
   - -android-cloexec-open
+  - -android-cloexec-pipe
   - -cppcoreguidelines-pro-type-vararg # to call `open()` from `fcntl.h` 
   - -hicpp-vararg # see above one
 UseColor: true
