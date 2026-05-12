@@ -71,7 +71,7 @@ void handle_client(Socket sock, std::string ip) {
     // Recieve requests (HTTP headers)
     ssize_t nbytes = 0;
     size_t total_nbytes = 0;
-    std::array<char, MAXDATASIZE> buf;
+    std::array<char, MAXDATASIZE> buf{};
     while (true) {
       size_t spaceleft = buf.size() - total_nbytes;
       nbytes = sock.recv(&buf[total_nbytes], spaceleft, 0);
@@ -142,6 +142,14 @@ static std::string_view get_mime_type(std::string_view path) {
   return "application/octet-stream";
 }
 
+bool is_path_safe(std::string_view path) {
+  auto find = std::filesystem::current_path().string() +
+              std::filesystem::path::preferred_separator;
+  auto canon_path = std::filesystem::weakly_canonical(path).string();
+
+  return canon_path.find(find) == 0;
+}
+
 HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
   if (request.substr(0, 5) != "GET /") {
     return http::send_405(sock);
@@ -153,13 +161,11 @@ HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
   // TODO: add HTTP encoding
   auto pos = request.find(' ');
   std::string path = (pos == 0 || pos == std::string::npos)
-                         ? "index.html"
-                         : std::string(request.substr(0, pos));
+                         ? "./index.html"
+                         : "./" + std::string(request.substr(0, pos));
 
   // Prevent Path Traversal (no `../../` in path)
-  if (std::filesystem::weakly_canonical(path).string().find(
-          std::filesystem::current_path().string() +
-          std::filesystem::path::preferred_separator) != 0) {
+  if (!is_path_safe(path)) {
     return http::send_403(sock);
   }
 
@@ -218,7 +224,7 @@ HttpStatus send_file_response(const Socket &sock,
     if (sent == 0) {
       break;
     }
-    total_sent += sent;
+    total_sent += static_cast<size_t>(sent);
   }
 #elif defined __FreeBSD__
   // NOTE: in FreeBSD loop is required only for non-block I/O
