@@ -35,7 +35,8 @@ target_compile_options(project_warnings INTERFACE
         -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-padded
         -Wno-weak-vtables -Wno-unused-member-function -Wno-exit-time-destructors
         -Wno-global-constructors -Wno-shadow-uncaptured-local
-        -Wno-unsafe-buffer-usage>
+        -Wno-unsafe-buffer-usage -Wno-ctad-maybe-unsupported
+        -Wno-disabled-macro-expansion>
 )
 
 # Hardening
@@ -91,6 +92,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 
 # Test
 enable_testing()
-add_executable(tpool_test tests/threadpool_test.cpp src/threadpool.cpp)
-target_link_libraries(tpool_test PRIVATE project_options)
-add_test(NAME ThreadPoolTest COMMAND tpool_test)
+add_executable(threadpool_test tests/threadpool_test.cpp src/threadpool.cpp)
+target_link_libraries(threadpool_test PRIVATE project_options)
+add_test(NAME threadpool_test COMMAND threadpool_test)
+
+add_executable(httphandler_test tests/httphandler_test.cpp src/httphandler.cpp)
+target_link_libraries(httphandler_test PRIVATE project_options)
+add_test(NAME httphandler_test COMMAND httphandler_test)
