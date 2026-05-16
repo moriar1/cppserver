@@ -7,6 +7,7 @@
 #include <exception>
 #include <fcntl.h>
 #include <filesystem>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -57,6 +58,46 @@ send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
 }
 // clang-format on
 
+static std::optional<std::string> read_request_headers(const Socket &sock,
+                                                       std::string_view ip) {
+  size_t total_nbytes = 0;
+  std::array<char, MAXDATASIZE> buf{};
+  while (true) {
+    size_t spaceleft = buf.size() - total_nbytes;
+    ssize_t nbytes = sock.recv(&buf[total_nbytes], spaceleft, 0);
+
+    if (nbytes < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      if (errno == EAGAIN) {
+        LOG_INFO(ip, " timeout");
+      } else {
+        LOG_ERRNO("recv");
+      }
+      return std::nullopt;
+    }
+
+    if (nbytes == 0) {
+      LOG_INFO(ip, " failed get request headers: client disconnected");
+      return std::nullopt;
+    }
+    total_nbytes += static_cast<size_t>(nbytes);
+
+    // Too long headers => 431
+    if (total_nbytes >= buf.size()) {
+      (void)http::send_431(sock);
+      return std::nullopt;
+    }
+
+    if (std::string_view(buf.data(), total_nbytes).find("\r\n\r\n") !=
+        std::string_view::npos) { // found end of headers
+      break;
+    }
+  }
+  return std::string(buf.data(), total_nbytes);
+}
+
 void handle_client(Socket sock, std::string ip) {
   try {
     // Set timeout for connection
@@ -68,47 +109,14 @@ void handle_client(Socket sock, std::string ip) {
       LOG_ERRNO("failed set snd timout");
     }
 
-    // Recieve requests (HTTP headers)
-    ssize_t nbytes = 0;
-    size_t total_nbytes = 0;
-    std::array<char, MAXDATASIZE> buf{};
-    while (true) {
-      size_t spaceleft = buf.size() - total_nbytes;
-      nbytes = sock.recv(&buf[total_nbytes], spaceleft, 0);
-
-      if (nbytes < 0) {
-        if (errno == EINTR) {
-          continue;
-        }
-        if (errno == EAGAIN) {
-          LOG_INFO(ip, " timeout");
-        } else {
-          LOG_ERRNO("recv");
-        }
-        return;
-      }
-
-      if (nbytes == 0) {
-        LOG_INFO(ip, " failed get request headers: client disconnected");
-        return;
-      }
-
-      total_nbytes += static_cast<size_t>(nbytes);
-      if (std::string_view(buf.data(), total_nbytes).find("\r\n\r\n") !=
-          std::string::npos) { // found end of headers
-        break;
-      }
-
-      // Too long headers => 431
-      if (total_nbytes >= buf.size()) {
-        (void)http::send_431(sock);
-        return;
-      }
+    // Recieve request (HTTP headers)
+    auto request = read_request_headers(sock, ip);
+    if (!request) {
+      return;
     }
-    std::string_view request(buf.data(), total_nbytes);
 
     // Send requested file
-    HttpStatus s = handle_http_request(sock, request);
+    HttpStatus s = handle_http_request(sock, request.value());
     if (s == 0) {
       LOG_INFO("client ", ip,
                " error occured in `send()` or `sendfile()` call");
