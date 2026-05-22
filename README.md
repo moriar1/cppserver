@@ -1,43 +1,43 @@
 # CPPServer
 
-Multi-threaded HTTP server using custom thread pool and BSD sockets.
+独自のスレッドプールとBSDソケット使用したHTTPサーバ。
 
-## Building from Source
+## ソースコードからのビルド
 
-**Prerequisites**:
+**前提条件:**
 
-- Unix-like OS: Linux, FreeBSD
-- C++ Compiler: GCC or Clang
+- Unix系OS: Linux, FreeBSD
+- C++ コンパイラ: GCCまたはClang
 - CMake
-- Ninja (optional, for faster builds)
+- Ninja (任意、ビルド高速化用)
 
-Installing dependencies for Ubuntu:
+Ubuntuでの依存関係のインストール:
 
 ```sh
 sudo apt install build-essential cmake ninja-build
 ```
 
-**Release Compilation**:
+**リリースビルド**:
 
 ```sh
 cmake -DCMAKE_BUILD_TYPE=Release -B build -S .
 cmake --build build
 ```
 
-**Debug Compilation** (with Sanitizers, Ninja and Clang):
+**Debug こんぱいる** (Sanitizer、 Ninja、 Clangを使用):
 
 ```sh
 CC=clang CXX=clang++ cmake -DCMAKE_BUILD_TYPE=Debug -B build -S . -G Ninja -DUSE_SANITIZER=address,undefined
 cmake --build build
 ```
 
-## Usage
+## 使い方
 
 ```sh
 ./build/cppserver
 ```
 
-**Example output**:
+**出力例**:
 
 ```text
 [INFO] main.cpp:60: binding to ::
@@ -48,20 +48,20 @@ cmake --build build
 [INFO] httphandler.cpp:116: client ::1 status: 404, closing connection...
 ```
 
-*Use Ctrl+C to stop.*
+*終了するにはCtrl+Cを押します。*
 
-## Testing
+## テスト
 
-### Using Web Browser
+### ウェブブラウザでのかくにん
 
-Run `cppserver` then open this link in your web browser: `http://localhost:3490`
+`cppserver`を起動後、ブラウザでつぎのリンクを開きます: `http://localhost:3490`
 
-### Using curl
+### curlで確認
 
 ```sh
-# HEAD request:
+# HEAD リクエスト:
 curl --head localhost:3490
 
-# GET request:
+# GET リクエスト:
 curl localhost:3490
 ```
