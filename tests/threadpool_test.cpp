@@ -1,10 +1,8 @@
 #include "threadpool.hpp"
 #include <atomic>
-#include <iostream>
+#include <gtest/gtest.h>
 
-int main() {
-  std::cerr << "\n---- Start threadpool test ----\n";
-
+TEST(ThreadPoolTest, AccumulatesCorrectly) {
   std::atomic<int> counter{};
   constexpr int iterations = 100;
 
@@ -16,7 +14,5 @@ int main() {
     }
   } // waits all threads in destructor
 
-  int status = (counter == iterations) ? 0 : 1;
-  std::cerr << "---- Test finishied ----\n\n";
-  return status;
+  EXPECT_EQ(counter, iterations);
 }

@@ -1,17 +1,10 @@
 #include "httphandler.hpp"
-#include <cassert>
-#include <iostream>
+#include <gtest/gtest.h>
 
-int main() {
-  bool status = http::is_path_safe("../../../../../etc/passwd");
-  if (status) {
-    std::cerr << "Error: `../../../../../etc/passwd` should be unsafe\n";
-    return 1;
-  }
+TEST(HttpHandlerTest, PathTraversalUnsafe) {
+  EXPECT_FALSE(http::is_path_safe("../../../../../etc/passwd"));
+}
 
-  bool status1 = http::is_path_safe("./index.html");
-  if (!status1) {
-    std::cerr << "Error: `index.html` should be safe\n";
-    return 1;
-  }
+TEST(HttpHandlerTest, NormalPathSafe) {
+  EXPECT_TRUE(http::is_path_safe("./index.html"));
 }

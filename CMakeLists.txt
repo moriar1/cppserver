@@ -7,8 +7,8 @@ set(USE_SANITIZER "address,undefined" CACHE STRING
     "Sanitizer to use: address, thread, undefined, leak, none")
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+  set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+  set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
 endif()
 
 project(
@@ -23,6 +23,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ---- Dependencies ----
 
 find_package(Threads REQUIRED)
+
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
 # ---- Compile options (interface targets) ----
 
@@ -65,18 +73,18 @@ target_link_options(project_performance INTERFACE
 add_library(project_sanitizers INTERFACE)
 
 if(NOT USE_SANITIZER STREQUAL "none")
-    set(SAN_FLAGS "-fsanitize=${USE_SANITIZER}")
+  set(SAN_FLAGS "-fsanitize=${USE_SANITIZER}")
 
-    target_compile_options(project_sanitizers INTERFACE
+  target_compile_options(project_sanitizers INTERFACE
         $<$<CONFIG:Debug>:${SAN_FLAGS} -fno-omit-frame-pointer>)
-    target_link_options(project_sanitizers INTERFACE
+  target_link_options(project_sanitizers INTERFACE
         $<$<CONFIG:Debug>:${SAN_FLAGS}>)
 endif()
 
 # All flags in one target `project_options`
 add_library(project_options INTERFACE)
 
-target_include_directories(project_options INTERFACE 
+target_include_directories(project_options INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 target_link_libraries(project_options INTERFACE
@@ -92,10 +100,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 
 # Test
 enable_testing()
+include(GoogleTest)
+
 add_executable(threadpool_test tests/threadpool_test.cpp src/threadpool.cpp)
-target_link_libraries(threadpool_test PRIVATE project_options)
-add_test(NAME threadpool_test COMMAND threadpool_test)
+target_link_libraries(threadpool_test PRIVATE project_options GTest::gtest_main)
+gtest_discover_tests(threadpool_test)
 
 add_executable(httphandler_test tests/httphandler_test.cpp src/httphandler.cpp)
-target_link_libraries(httphandler_test PRIVATE project_options)
-add_test(NAME httphandler_test COMMAND httphandler_test)
+target_link_libraries(httphandler_test PRIVATE project_options GTest::gtest_main)
+gtest_discover_tests(httphandler_test)
