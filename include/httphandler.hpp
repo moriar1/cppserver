@@ -1,5 +1,6 @@
 #pragma once
 #include "socket.hpp"
+#include <optional>
 #include <string>
 
 namespace http {

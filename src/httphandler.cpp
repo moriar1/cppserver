@@ -7,7 +7,6 @@
 #include <exception>
 #include <fcntl.h>
 #include <filesystem>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>

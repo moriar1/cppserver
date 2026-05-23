@@ -1,0 +1,48 @@
+name: CServer CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        run: cmake -DCMAKE_BUILD_TYPE=Debug -B build -S . -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run server
+        run: |
+          ./build/cppserver &> cppserver.log &
+          sleep 1
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install test dependencies
+        run: pip install requests
+
+      - name: Run integration tests
+        run: python tests/integration_test.py
+
+      - name: Shut down
+        if: always()
+        run: killall -INT cppserver || true
+
+      - name: Show cppserver logs
+        if: always()
+        run: cat cppserver.log
