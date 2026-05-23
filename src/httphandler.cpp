@@ -17,7 +17,6 @@
 namespace http {
 
 using HttpStatus = unsigned;
-static constexpr size_t MAXDATASIZE = 4096;
 static constexpr time_t TIMEOUT = 10;
 
 static HttpStatus handle_http_request(const Socket &sock,
@@ -58,8 +57,8 @@ send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
 }
 // clang-format on
 
-static std::optional<std::string> read_request_headers(const Socket &sock,
-                                                       std::string_view ip) {
+std::optional<std::string> read_request_headers(const Socket &sock,
+                                                std::string_view ip) {
   size_t total_nbytes = 0;
   std::array<char, MAXDATASIZE> buf{};
   while (true) {
