@@ -150,6 +150,10 @@ static std::string_view get_mime_type(std::string_view path) {
 }
 
 bool is_path_safe(std::string_view path) {
+  if (path.length() > 254) {
+    LOG_DEBUG("too long path");
+    return false;
+  }
   auto find = std::filesystem::current_path().string() +
               std::filesystem::path::preferred_separator;
   auto canon_path = std::filesystem::weakly_canonical(path).string();
