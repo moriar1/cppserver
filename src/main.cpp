@@ -153,7 +153,7 @@ static void server_loop(Socket server_sock, ThreadPool &thread_pool) {
       auto accept_sock = std::make_shared<Socket>(new_fd);
 
       std::array<char, INET6_ADDRSTRLEN> ip = get_ip(their_addr);
-      LOG_INFO("got connection from ", ip.data());
+      LOG_INFO(ip.data(), " got connection");
 
       thread_pool.submit([accept_sock, ip = std::string(ip.data())]() mutable {
         http::handle_client(std::move(*accept_sock), std::move(ip));
@@ -177,7 +177,7 @@ int main() {
     action.sa_handler = SIG_IGN;
     sigaction(SIGPIPE, &action, nullptr);
 
-    LOG_INFO("waiting connections...");
+    LOG_INFO("waiting connections on port ", PORT, "...");
     server_loop(std::move(server_fd), thread_pool);
   } catch (const std::exception &e) {
     LOG_ERROR("Exception caught: ", e.what());

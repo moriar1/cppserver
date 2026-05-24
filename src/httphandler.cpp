@@ -76,7 +76,7 @@ std::optional<std::string> read_request_headers(const Socket &sock,
       if (errno == EAGAIN) {
         LOG_INFO(ip, " timeout");
       } else {
-        LOG_ERRNO("recv");
+        LOG_ERRNO(ip, "recv");
       }
       return std::nullopt;
     }
@@ -115,10 +115,10 @@ void handle_client(Socket sock, std::string ip) {
     // Set timeout for connection
     const struct timeval time = {TIMEOUT, 0};
     if (sock.setsockopt(SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
-      LOG_ERRNO("failed set rcv timout");
+      LOG_ERRNO(ip, "failed set rcv timout");
     }
     if (sock.setsockopt(SOL_SOCKET, SO_SNDTIMEO, &time, sizeof(time)) != 0) {
-      LOG_ERRNO("failed set snd timout");
+      LOG_ERRNO(ip, "failed set snd timout");
     }
 
     // Recieve request (HTTP headers)
@@ -130,13 +130,12 @@ void handle_client(Socket sock, std::string ip) {
     // Send requested file
     HttpStatus s = handle_http_request(sock, request.value());
     if (s == 0) {
-      LOG_INFO("client ", ip,
-               " error occured in `send()` or `sendfile()` call");
+      LOG_INFO(ip, " error occured in `send()` or `sendfile()` call");
     } else {
-      LOG_INFO("client ", ip, " status: ", s, ", closing connection...");
+      LOG_INFO(ip, " status: ", s);
     }
   } catch (const std::exception &e) {
-    LOG_INFO("client ", ip, " unexpected error: ", e.what());
+    LOG_INFO(ip, " unexpected error: ", e.what());
   }
 }
 

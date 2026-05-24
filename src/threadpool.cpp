@@ -15,7 +15,6 @@ ThreadPool::ThreadPool(unsigned nthreads) {
           break;
         }
 
-        LOG_DEBUG("starting task execution...");
         auto task = qtasks.front();
         if (!task) {
           LOG_DEBUG("wrong task");
@@ -31,7 +30,6 @@ ThreadPool::ThreadPool(unsigned nthreads) {
         } catch (...) {
           LOG_ERROR("got exception from task");
         }
-        LOG_DEBUG("finished task executing.");
       }
     });
   }
