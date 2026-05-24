@@ -9,12 +9,12 @@
 - Unix系OS: Linux, FreeBSD
 - C++ コンパイラ: GCCまたはClang
 - CMake
-- Ninja (任意、ビルド高速化用)
+- Ninja (任意)
 
 Ubuntuでの依存関係のインストール:
 
 ```sh
-sudo apt install build-essential cmake ninja-build
+sudo -y apt install build-essential cmake ninja-build
 ```
 
 **リリースビルド**:
