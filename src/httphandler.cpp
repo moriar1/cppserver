@@ -21,7 +21,8 @@ static constexpr time_t TIMEOUT = 10;
 static HttpStatus handle_http_request(const Socket &sock,
                                       std::string_view request);
 static HttpStatus send_file_response(const Socket &sock,
-                                     const std::string &path);
+                                     const std::string &path,
+                                     bool is_send_body);
 
 [[nodiscard]] static inline HttpStatus
 send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
@@ -34,6 +35,10 @@ send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
 
 // clang-format off
 // Both simple and fast functions for sending HTTP status
+[[nodiscard]] static inline HttpStatus send_400(const Socket &sock) {
+  static constexpr std::string_view msg = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n400";
+  return send_response(sock,  400,  msg);
+}
 [[nodiscard]] static inline HttpStatus send_403(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n403";
   return send_response(sock,  403,  msg);
@@ -170,14 +175,22 @@ bool is_path_safe(std::string_view path) {
 }
 
 HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
-  if (request.substr(0, 5) != "GET /") {
+  if (request.length() < 10) { // prevent `out_of_range` before using substr
+    return http::send_400(sock);
+  }
+
+  // Handling only `GET` and `HEAD` requests
+  bool is_get = false;
+  if (request.substr(0, 5) == "GET /") {
+    is_get = true;
+  } else if (request.substr(0, 6) != "HEAD /") {
     return http::send_405(sock);
   }
+
   // Remove `GET /` from `request`
-  request.remove_prefix(5);
+  request.remove_prefix(is_get ? 5 : 6);
 
   // Find position where file path ends and extract file path itself
-  // TODO: add HTTP encoding
   auto pos = request.find(' ');
   std::string path = (pos == 0 || pos == std::string::npos)
                          ? "./index.html"
@@ -188,13 +201,13 @@ HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
     return http::send_403(sock);
   }
 
-  return send_file_response(sock, path);
+  return send_file_response(sock, path, is_get);
 }
 
 HttpStatus send_file_response(const Socket &sock,
-                              const std::string &content_path) {
+                              const std::string &content_path,
+                              bool is_send_body) {
   // Prepare file
-  // NOTE: may add generating HTML document if directory is requested
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
   if (content_fd.get() == -1) {
     if (errno == ENOENT) {
@@ -219,6 +232,9 @@ HttpStatus send_file_response(const Socket &sock,
   if (sock.send_all(sstr.str()) == -1) {
     LOG_ERRNO("send");
     return 0;
+  }
+  if (!is_send_body) { // No body sending for HEAD request
+    return 200;
   }
 
 #ifdef __linux__
