@@ -80,7 +80,10 @@ std::optional<std::string> read_request_headers(const Socket &sock,
       LOG_INFO(ip, " failed get request headers: client disconnected");
       return std::nullopt;
     }
-    total_nbytes += static_cast<size_t>(nbytes);
+    // cast `ssize_t` to `size_t` to prevent `-Wsign-conversion` further
+    auto bytes_read = static_cast<size_t>(nbytes);
+
+    total_nbytes += bytes_read;
 
     // Too long headers => 431
     if (total_nbytes >= buf.size()) {
@@ -88,7 +91,13 @@ std::optional<std::string> read_request_headers(const Socket &sock,
       return std::nullopt;
     }
 
-    if (std::string_view(buf.data(), total_nbytes).find("\r\n\r\n") !=
+    // Find `\r\n\r\n` in new data (including 3 symbols in previous data)
+    size_t pos =
+        (total_nbytes - bytes_read >= 3) ? total_nbytes - bytes_read - 3 : 0;
+    size_t sz = total_nbytes - pos;
+
+    std::string_view slice(&buf[pos], sz);
+    if (slice.find("\r\n\r\n") !=
         std::string_view::npos) { // found end of headers
       break;
     }

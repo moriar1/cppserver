@@ -44,7 +44,7 @@ target_compile_options(project_warnings INTERFACE
         -Wno-weak-vtables -Wno-unused-member-function -Wno-exit-time-destructors
         -Wno-global-constructors -Wno-shadow-uncaptured-local
         -Wno-unsafe-buffer-usage -Wno-ctad-maybe-unsupported
-        -Wno-disabled-macro-expansion>
+        -Wno-disabled-macro-expansion -Wno-documentation-unknown-command>
 )
 
 # Hardening
