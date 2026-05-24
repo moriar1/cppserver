@@ -45,4 +45,4 @@ jobs:
 
       - name: Show cppserver logs
         if: always()
-        run: cat cppserver.log
+        run: '[ -f cppserver.log ] && cat cppserver.log'
