@@ -7,6 +7,7 @@
 #include <exception>
 #include <fcntl.h>
 #include <filesystem>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -18,44 +19,45 @@ namespace http {
 using HttpStatus = unsigned;
 static constexpr time_t TIMEOUT = 10;
 
-static HttpStatus handle_http_request(const Socket &sock,
-                                      std::string_view request);
-static HttpStatus send_file_response(const Socket &sock,
-                                     const std::string &path,
-                                     bool is_send_body);
 
-[[nodiscard]] static inline HttpStatus
+static std::optional<HttpStatus> handle_http_request(const Socket &sock,
+                                                     std::string_view request);
+static std::optional<HttpStatus> send_file_response(const Socket &sock,
+                                                    const std::string &path,
+                                                    bool is_send_body);
+
+[[nodiscard]] static inline std::optional<HttpStatus>
 send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
   if (sock.send_all(msg) == -1) {
     LOG_ERRNO("failed send response fot status ", status);
-    return 0;
+    return std::nullopt;
   }
   return status;
 }
 
 // clang-format off
 // Both simple and fast functions for sending HTTP status
-[[nodiscard]] static inline HttpStatus send_400(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_400(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n400";
   return send_response(sock,  400,  msg);
 }
-[[nodiscard]] static inline HttpStatus send_403(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_403(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n403";
   return send_response(sock,  403,  msg);
 }
-[[nodiscard]] static inline HttpStatus send_404(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_404(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n404";
   return send_response(sock,  404,  msg);
 }
-[[nodiscard]] static inline HttpStatus send_405(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_405(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n405";
   return send_response(sock,  405,  msg);
 }
-[[nodiscard]] static inline HttpStatus send_431(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_431(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n431";
   return send_response(sock,  431,  msg);
 }
-[[nodiscard]] static inline HttpStatus send_500(const Socket &sock) {
+[[nodiscard]] static std::optional<HttpStatus> send_500(const Socket &sock) {
   static constexpr std::string_view msg = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n500";
   return send_response(sock,  500,  msg);
 }
@@ -128,11 +130,11 @@ void handle_client(Socket sock, std::string ip) {
     }
 
     // Send requested file
-    HttpStatus s = handle_http_request(sock, request.value());
-    if (s == 0) {
+    auto s = handle_http_request(sock, request.value());
+    if (!s) {
       LOG_INFO(ip, " error occured in `send()` or `sendfile()` call");
     } else {
-      LOG_INFO(ip, " status: ", s);
+      LOG_INFO(ip, " status: ", s.value());
     }
   } catch (const std::exception &e) {
     LOG_INFO(ip, " unexpected error: ", e.what());
@@ -173,7 +175,8 @@ bool is_path_safe(std::string_view path) {
   return canon_path.find(find) == 0;
 }
 
-HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
+std::optional<HttpStatus> handle_http_request(const Socket &sock,
+                                              std::string_view request) {
   if (request.length() < 10) { // prevent `out_of_range` before using substr
     return http::send_400(sock);
   }
@@ -203,9 +206,9 @@ HttpStatus handle_http_request(const Socket &sock, std::string_view request) {
   return send_file_response(sock, path, is_get);
 }
 
-HttpStatus send_file_response(const Socket &sock,
-                              const std::string &content_path,
-                              bool is_send_body) {
+std::optional<HttpStatus> send_file_response(const Socket &sock,
+                                             const std::string &content_path,
+                                             bool is_send_body) {
   // Prepare file
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
   if (content_fd.get() == -1) {
@@ -230,7 +233,7 @@ HttpStatus send_file_response(const Socket &sock,
        << "\r\nConnection: close\r\n\r\n";
   if (sock.send_all(sstr.str()) == -1) {
     LOG_ERRNO("send");
-    return 0;
+    return std::nullopt;
   }
   if (!is_send_body) { // No body sending for HEAD request
     return 200;
@@ -249,10 +252,10 @@ HttpStatus send_file_response(const Socket &sock,
       }
       if (errno == EAGAIN) {
         LOG_INFO("client timeout (couldn't sendfile)");
-        return 0; // sendfile error, but we sent `200 OK` in headers
+        return std::nullopt; // sendfile error, but we sent `200 OK` in headers
       }
       LOG_ERRNO("sendfile");
-      return 0;
+      return std::nullopt;
     }
 
     if (sent == 0) {
@@ -269,7 +272,7 @@ HttpStatus send_file_response(const Socket &sock,
     } else {
       LOG_ERRNO("sendfile");
     }
-    return 0; // sendfile error, but we sent `200 OK` in headers
+    return std::nullopt; // sendfile error, but we sent `200 OK` in headers
   }
 #endif
   return 200;
