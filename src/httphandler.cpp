@@ -19,7 +19,6 @@ namespace http {
 using HttpStatus = unsigned;
 static constexpr time_t TIMEOUT = 10;
 
-
 static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
 static std::optional<HttpStatus> send_file_response(const Socket &sock,
@@ -175,6 +174,67 @@ bool is_path_safe(std::string_view path) {
   return canon_path.find(find) == 0;
 }
 
+static std::optional<char> hex_to_char(std::string_view s) {
+  if (s.size() < 2) {
+    return std::nullopt;
+  }
+
+  // this array is not `constexpr` because of `fill()` but it still lazy static
+  static const std::array<int, 256> table = []() {
+    std::array<int, 256> arr{};
+    std::fill(arr.begin(), arr.end(), -1);
+
+    for (size_t i = 0; i < 10; i++) {
+      arr['0' + i] = static_cast<int>(i);
+    }
+    for (size_t i = 0; i < 6; i++) {
+      arr['a' + i] = static_cast<int>(10 + i);
+      arr['A' + i] = static_cast<int>(10 + i);
+    }
+
+    return arr;
+  }();
+
+  auto first = table[static_cast<unsigned char>(s[0])];
+  auto second = table[static_cast<unsigned char>(s[1])];
+
+  if (first == -1 || second == -1) {
+    return std::nullopt;
+  }
+
+  return static_cast<char>((first * 16) + second);
+}
+
+static std::string url_decode(std::string_view s) {
+  size_t idx = s.find('%');
+  if (idx == std::string_view::npos) {
+    return std::string(s);
+  }
+
+  std::string decoded;
+  decoded.reserve(s.size());
+
+  while (idx != std::string_view::npos) {
+    if (idx + 2 >= s.size()) { // check two characters after found `%`
+      break;
+    }
+    decoded.append(s.substr(0, idx));
+    std::string_view maybe_hex = s.substr(idx + 1, 2);
+
+    if (auto ch_hexed = hex_to_char(maybe_hex)) {
+      decoded += ch_hexed.value(); // add valid character
+      s.remove_prefix(idx + 3);
+    } else {
+      decoded.push_back('%'); // add `%` as is
+      s.remove_prefix(idx + 1);
+    }
+
+    idx = s.find('%');
+  }
+  decoded += s;
+  return decoded;
+}
+
 std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                               std::string_view request) {
   if (request.length() < 10) { // prevent `out_of_range` before using substr
@@ -193,10 +253,10 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
   request.remove_prefix(is_get ? 5 : 6);
 
   // Find position where file path ends and extract file path itself
-  auto pos = request.find(' ');
+  auto pos = request.find_first_of(" ?"); // `?` - to skip http query
   std::string path = (pos == 0 || pos == std::string::npos)
                          ? "./index.html"
-                         : "./" + std::string(request.substr(0, pos));
+                         : "./" + url_decode(request.substr(0, pos));
 
   // Prevent Path Traversal (no `../../` in path)
   if (!is_path_safe(path)) {

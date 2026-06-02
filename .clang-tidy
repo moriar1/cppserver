@@ -29,4 +29,5 @@ Checks:
   - -android-cloexec-pipe
   - -cppcoreguidelines-pro-type-vararg # to call `open()` from `fcntl.h` 
   - -hicpp-vararg # see above one
+  - -boost-use-ranges # appears in `std::fill()`, but we do not use boost
 UseColor: true
