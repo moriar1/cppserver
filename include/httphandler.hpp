@@ -1,12 +1,16 @@
 #pragma once
 #include "socket.hpp"
+#include <chrono>
 #include <optional>
 #include <string>
 
 namespace http {
 
+using namespace std::chrono_literals;
+
 inline constexpr size_t MAXDATASIZE = 4096;
-void handle_client(Socket accept_sock, std::string ip);
+
+void handle_client(Socket, std::string, std::chrono::seconds timeout = 10s);
 
 // for tests
 bool is_path_safe(std::string_view path);

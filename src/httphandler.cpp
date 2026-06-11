@@ -17,7 +17,6 @@
 namespace http {
 
 using HttpStatus = unsigned;
-static constexpr time_t TIMEOUT = 10;
 
 static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
@@ -111,10 +110,10 @@ std::optional<std::string> read_request_headers(const Socket &sock,
   return std::string(buf.data(), total_nbytes);
 }
 
-void handle_client(Socket sock, std::string ip) {
+void handle_client(Socket sock, std::string ip, std::chrono::seconds timeout) {
   try {
     // Set timeout for connection
-    const struct timeval time = {TIMEOUT, 0};
+    const struct timeval time = {timeout.count(), 0};
     if (sock.setsockopt(SOL_SOCKET, SO_RCVTIMEO, &time, sizeof(time)) != 0) {
       LOG_ERRNO(ip, "failed set rcv timout");
     }
