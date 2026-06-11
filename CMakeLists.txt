@@ -95,7 +95,8 @@ target_link_libraries(project_options INTERFACE
     project_performance)
 
 # Main Executable
-add_executable(${PROJECT_NAME} src/main.cpp src/threadpool.cpp src/httphandler.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/threadpool.cpp
+               src/httphandler.cpp src/config.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_VERSION="${PROJECT_VERSION}")
 

@@ -1,21 +1,22 @@
+#include "config.hpp"
 #include "customlogger.hpp"
 #include "httphandler.hpp"
 #include "socket.hpp"
 #include "threadpool.hpp"
-#include "uniquefd.hpp"
 #include <arpa/inet.h>
 #include <array>
 #include <csignal>
 #include <memory>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <string_view>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>
 
-inline constexpr const char *PORT = "3490";
-inline constexpr int BACKLOG = 10;
+inline constexpr const char *PORT = "3490"; // TODO: remove
+inline constexpr const int BACKLOG = 10;    // TODO: remove
 
 using AddrInfoPtr = std::unique_ptr<addrinfo, void (*)(addrinfo *)>;
 
@@ -24,7 +25,7 @@ struct Pipe {
   UniqueFd write;
 
   static Pipe create() {
-    int fds[2];
+    int fds[2]; // NOLINT
     if (pipe(&fds[0]) < 0) {
       throw std::system_error(errno, std::system_category(), "pipe");
     }
@@ -162,8 +163,15 @@ static void server_loop(Socket server_sock, ThreadPool &thread_pool) {
   }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
   try {
+    std::vector<std::string_view> args(argv, argv + argc); // NOLINT
+    auto config = parse(args);
+    if (!config) {
+      return 0;
+    }
+    const Config &cfg = config.value();
+
     Socket server_fd = setup_server();
     ThreadPool thread_pool{std::thread::hardware_concurrency()};
     [[maybe_unused]] auto &p = get_pipe(); // static pipe init for signals
