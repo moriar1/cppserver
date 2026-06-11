@@ -13,7 +13,7 @@ endif()
 
 project(
     cppserver
-    VERSION 0.1.0
+    VERSION 0.1
     DESCRIPTION "Simple C++ Web Server"
     LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -97,6 +97,7 @@ target_link_libraries(project_options INTERFACE
 # Main Executable
 add_executable(${PROJECT_NAME} src/main.cpp src/threadpool.cpp src/httphandler.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
+target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_VERSION="${PROJECT_VERSION}")
 
 # Test
 enable_testing()
