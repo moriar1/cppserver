@@ -30,4 +30,5 @@ Checks:
   - -cppcoreguidelines-pro-type-vararg # to call `open()` from `fcntl.h` 
   - -hicpp-vararg # see above one
   - -boost-use-ranges # appears in `std::fill()`, but we do not use boost
+  - -bugprone-easily-swappable-parameters # appears in `ThreadPool::ThreadPool(size_t nthreads, size_t mt)`
 UseColor: true

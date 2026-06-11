@@ -1,7 +1,7 @@
 #include "customlogger.hpp"
 #include "threadpool.hpp"
 
-ThreadPool::ThreadPool(unsigned nthreads) {
+ThreadPool::ThreadPool(size_t nthreads, size_t mt) : max_tasks(mt) {
   LOG_DEBUG("ThreadPool creating");
 
   for (unsigned i = 0; i < nthreads; i++) {
