@@ -17,7 +17,7 @@ Ubuntuでの依存関係のインストール:
 sudo -y apt install build-essential cmake ninja-build
 ```
 
-**リリースビルド**:
+**リリースビルド:**
 
 ```sh
 cmake -DCMAKE_BUILD_TYPE=Release -B build -S .
@@ -33,11 +33,21 @@ cmake --build build
 
 ## 使い方
 
+**初期設定 (デフォルト引数):**
+
 ```sh
 ./build/cppserver
 ```
 
-**出力例**:
+**詳細設定 (カスタム引数):**
+
+```sh
+./build/cppserver --port 8080 --workers 4 --timeout 5 --backlog 10
+```
+
+*利用可能なオプションを確認するには `--help` を実行してください。*
+
+**出力例:**
 
 ```text
 [INFO] main.cpp:60: binding to ::
