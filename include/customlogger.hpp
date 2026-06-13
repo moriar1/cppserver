@@ -17,8 +17,19 @@ inline void print_time() {
   tm tm_buf{};
   localtime_r(&ts.tv_sec, &tm_buf);
 
-  std::array<char, 24> str{};
-  if (std::strftime(str.data(), sizeof(str), "[%H:%M:%S] ", &tm_buf) != 0U) {
+  std::array<char, 16> str{};
+  if (std::strftime(str.data(), sizeof(str), "[%H:%M:%S.", &tm_buf) != 0U) {
+    auto ms = static_cast<unsigned>(ts.tv_nsec / 1'000'000);
+
+    // add miliseconds
+    str[10] = static_cast<char>('0' + (ms / 100));
+    str[11] = static_cast<char>('0' + ((ms / 10) % 10));
+    str[12] = static_cast<char>('0' + (ms % 10));
+
+    str[13] = ']';
+    str[14] = ' ';
+    str[15] = 0;
+
     std::cerr << str.data();
   }
 }
