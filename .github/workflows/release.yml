@@ -27,7 +27,7 @@ jobs:
       - name: Pack binary and index.html
         run: |
           mkdir cppserver
-          cp build/cppserver index.html cppserver
+          cp build/cppserver index.html LICENSE cppserver
           tar -czvf cppserver-${{ github.ref_name }}-linux-amd64.tar.gz cppserver
 
       - name: Create GitHub release
