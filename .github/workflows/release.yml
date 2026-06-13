@@ -1,0 +1,38 @@
+name: CPPServer CD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup CMake
+        run: cmake -DCMAKE_BUILD_TYPE=Release -B build -S . -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Pack binary and index.html
+        run: |
+          mkdir cppserver
+          cp build/cppserver index.html cppserver
+          tar -czvf cppserver-${{ github.ref_name }}-linux-amd64.tar.gz cppserver
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: cppserver-${{ github.ref_name }}-linux-amd64.tar.gz
+          draft: true
+          generate_release_notes: true
