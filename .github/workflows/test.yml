@@ -1,9 +1,12 @@
-name: CServer CI
+name: CPPServer CI
 
-on: [push, pull_request]
-
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -13,7 +16,7 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup CMake
         run: cmake -DCMAKE_BUILD_TYPE=Debug -B build -S . -G Ninja
@@ -30,7 +33,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       - name: Install test dependencies
