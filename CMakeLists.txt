@@ -5,6 +5,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(USE_SANITIZER "address,undefined" CACHE STRING
     "Sanitizer to use: address, thread, undefined, leak, none")
+option(ENABLE_LOGS "Enable server logging" ON)
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
   set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
@@ -99,6 +100,10 @@ add_executable(${PROJECT_NAME} src/main.cpp src/threadpool.cpp
                src/httphandler.cpp src/config.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_VERSION="${PROJECT_VERSION}")
+
+if(NOT ENABLE_LOGS)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE NO_LOGS)
+endif()
 
 # Test
 enable_testing()

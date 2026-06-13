@@ -36,29 +36,51 @@ inline void print_time() {
 
 template <typename... Args>
 void log_impl(std::string_view level, std::string_view file, int line,
-              Args &&...args) {
+              const Args &...args) {
   std::lock_guard lk(glob_log_mut);
 
   print_time();
   std::cerr << "[" << level << "] " << file << ":" << line << ": ";
-  (std::cerr << ... << std::forward<Args>(args)) << '\n'; // fold expression
+  (std::cerr << ... << args) << '\n'; // fold expression
 }
 
 template <typename... Args>
-void log_release_impl(std::string_view level, Args &&...args) {
+void log_release_impl(std::string_view level, const Args &...args) {
   std::lock_guard lk(glob_log_mut);
 
   print_time();
   std::cerr << "[" << level << "] ";
-  (std::cerr << ... << std::forward<Args>(args)) << '\n';
+  (std::cerr << ... << args) << '\n';
 }
+
+template <typename... Args>
+constexpr void unused_helper(const Args &.../*unused*/) noexcept {}
 
 } // namespace customlogger
 
 // Use macros instead of inline functions because of __FILE_NAME__ and __LINE__
 
+// clang-format off
+#ifdef NO_LOGS
+
+// We cant just leave these macros as `((void)0)` because otherwise
+// we will get warnings: `-Wunused-variable` `-Wunused-exception-parameter` etc.
+// Anyway these macros do not overhead cpu when `-O3` used
+
+#define LOG_DEBUG(...) \
+  do { if (false) { customlogger::unused_helper(__VA_ARGS__); } } while (0)
+#define LOG_INFO(...) \
+  do { if (false) { customlogger::unused_helper(__VA_ARGS__); } } while (0)
+#define LOG_ERROR(...) \
+  do { if (false) { customlogger::unused_helper(__VA_ARGS__); } } while (0)
+#define LOG_ERRNO(...) \
+  do { if (false) { customlogger::unused_helper(__VA_ARGS__); } } while (0)
+#define LOG_FATAL(...) \
+  do { if (false) { customlogger::unused_helper(__VA_ARGS__); } } while (0)
+// clang-format on
+
 // Debug macros
-#ifndef NDEBUG
+#elif !defined NDEBUG
 #define LOG_DEBUG(...)                                                         \
   customlogger::log_impl("DEBUG", __FILE_NAME__, __LINE__, __VA_ARGS__)
 #define LOG_INFO(...)                                                          \
