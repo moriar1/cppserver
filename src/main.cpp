@@ -36,8 +36,8 @@ static Pipe &get_pipe() {
   return instance;
 }
 
-static void fatalsig(int __attribute__((unused)) signum) {
-  write(get_pipe().write.get(), "f", 1); // interrupt `select()` waiting
+static void fatalsig([[maybe_unused]] int /* signum */) {
+  (void)write(get_pipe().write.get(), "f", 1); // interrupt `select()` waiting
 }
 
 static std::array<char, INET6_ADDRSTRLEN> get_ip(const sockaddr *sa) {
@@ -134,7 +134,7 @@ static void server_loop(Socket server_sock, ThreadPool &thread_pool,
 
     if (FD_ISSET(get_pipe().read.get(), &readset)) {
       char dummy{};
-      read(get_pipe().read.get(), &dummy, 1);
+      (void)read(get_pipe().read.get(), &dummy, 1);
       LOG_INFO("shutdown singal recvieved");
       break;
     }
