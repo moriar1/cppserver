@@ -6,7 +6,6 @@
 #include <cerrno>
 #include <exception>
 #include <fcntl.h>
-#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -16,13 +15,14 @@
 
 namespace http {
 
+namespace fs = std::filesystem;
+
 using HttpStatus = unsigned;
 
 static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
-static std::optional<HttpStatus> send_file_response(const Socket &sock,
-                                                    const std::string &path,
-                                                    bool is_send_body);
+static std::optional<HttpStatus>
+send_file_response(const Socket &sock, const fs::path &path, bool is_send_body);
 
 [[nodiscard]] static inline std::optional<HttpStatus>
 send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
@@ -139,12 +139,8 @@ void handle_client(Socket sock, std::string ip, std::chrono::seconds timeout) {
   }
 }
 
-static std::string_view get_mime_type(std::string_view path) {
-  size_t dpos = path.find_last_of('.');
-  if (dpos == std::string_view::npos) {
-    return "application/octet-stream";
-  }
-  std::string_view ext = path.substr(dpos);
+static std::string_view get_mime_type(const fs::path &path) {
+  std::string ext = path.extension().string();
 
   if (ext == ".html" || ext == ".htm") {
     return "text/html";
@@ -161,14 +157,13 @@ static std::string_view get_mime_type(std::string_view path) {
   return "application/octet-stream";
 }
 
-bool is_path_safe(std::string_view path) {
-  if (path.length() > 254) {
+bool is_path_safe(const fs::path &path) {
+  if (path.native().length() > 254) {
     LOG_DEBUG("too long path");
     return false;
   }
-  auto find = std::filesystem::current_path().string() +
-              std::filesystem::path::preferred_separator;
-  auto canon_path = std::filesystem::weakly_canonical(path).string();
+  auto find = fs::current_path().string() + fs::path::preferred_separator;
+  auto canon_path = fs::weakly_canonical(path).string();
 
   return canon_path.find(find) == 0;
 }
@@ -253,9 +248,10 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
 
   // Find position where file path ends and extract file path itself
   auto pos = request.find_first_of(" ?"); // `?` - to skip http query
-  std::string path = (pos == 0 || pos == std::string::npos)
-                         ? "./index.html"
-                         : "./" + url_decode(request.substr(0, pos));
+  std::string path_str = (pos == 0 || pos == std::string::npos)
+                             ? "./index.html"
+                             : "./" + url_decode(request.substr(0, pos));
+  fs::path path{path_str};
 
   // Prevent Path Traversal (no `../../` in path)
   if (!is_path_safe(path)) {
@@ -266,7 +262,7 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
 }
 
 std::optional<HttpStatus> send_file_response(const Socket &sock,
-                                             const std::string &content_path,
+                                             const fs::path &content_path,
                                              bool is_send_body) {
   // Prepare file
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
