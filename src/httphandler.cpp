@@ -12,6 +12,13 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <system_error>
+
+#ifdef __FreeBSD__
+#include <sys/syslimits.h>
+#elif defined __linux__
+#include <limits.h>
+#endif
 
 namespace http {
 
@@ -158,14 +165,27 @@ static std::string_view get_mime_type(const fs::path &path) {
 }
 
 bool is_path_safe(const fs::path &path) {
-  if (path.native().length() > 254) {
+  if (path.native().length() > PATH_MAX - 1) {
     LOG_DEBUG("too long path");
     return false;
   }
-  auto find = fs::current_path().string() + fs::path::preferred_separator;
-  auto canon_path = fs::weakly_canonical(path).string();
 
-  return canon_path.find(find) == 0;
+  std::error_code ec;
+
+  auto canon_path = fs::weakly_canonical(path, ec);
+  if (ec) {
+    return false;
+  }
+
+  auto root_path = fs::current_path(ec);
+  if (ec) {
+    return false;
+  }
+
+  auto relative = canon_path.lexically_relative(root_path);
+
+  // if there is `../` in the beggining of path (`..` in iterator) => false
+  return !(*relative.begin() == "..");
 }
 
 static std::optional<char> hex_to_char(std::string_view s) {
