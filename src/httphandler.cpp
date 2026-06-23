@@ -29,6 +29,8 @@ static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
 static std::optional<HttpStatus>
 send_file_response(const Socket &sock, const fs::path &path, bool is_send_body);
+static std::optional<HttpStatus>
+send_dir_response(const Socket &sock, const fs::path &path, bool is_send_body);
 
 [[nodiscard]] static inline std::optional<HttpStatus>
 send_response(const Socket &sock, HttpStatus status, std::string_view msg) {
@@ -277,7 +279,17 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
     return http::send_403(sock);
   }
 
-  return send_file_response(sock, path, is_get);
+  std::error_code ec;
+  bool is_dir = std::filesystem::is_directory(path, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) {
+      return http::send_404(sock);
+    }
+    return http::send_500(sock);
+  }
+
+  return is_dir ? send_dir_response(sock, path, is_get)
+                : send_file_response(sock, path, is_get);
 }
 
 std::optional<HttpStatus> send_file_response(const Socket &sock,
@@ -353,6 +365,64 @@ std::optional<HttpStatus> send_file_response(const Socket &sock,
     return std::nullopt; // sendfile error, but we sent `200 OK` in headers
   }
 #endif
+  return 200;
+}
+
+// Sends HTML with entries in requested directory
+std::optional<HttpStatus>
+send_dir_response(const Socket &sock, const fs::path &path, bool is_send_body) {
+  std::string body;
+  body.reserve(2048);
+
+  // clang-format off
+  body = "<html><head><title>Index of " + path.native() + "</title></head><body>"
+         "<h1>Index of " + path.native() + "/</h1><hr><pre><a href=\"/../\">../</a>\n";
+  // clang-format on
+
+  std::error_code ec;
+  auto it = std::filesystem::directory_iterator(path, ec);
+  if (ec) {
+    LOG_ERROR("directory_iterator: ", ec.message());
+    return http::send_500(sock);
+  }
+
+  for (const auto &entry : it) {
+    std::string full_path = entry.path().string(); // `./path/to/myfile.txt`
+    std::string_view href = full_path;
+    href.remove_prefix(1); // remove dot `./path` -> `/path`
+
+    std::string filename = entry.path().filename().string(); // `myfile.txt`
+
+    body += "<a href=\"";
+    body += href;
+    body += "\">";
+    body += filename;
+    body += "</a>\n";
+  }
+
+  body += "</pre><hr></body></html>\n";
+
+  // Send headers
+  std::string headers;
+  headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ";
+  headers += std::to_string(body.size());
+  headers += "\r\nConnection: close\r\n\r\n";
+
+  if (sock.send_all(headers) == -1) {
+    LOG_ERRNO("send");
+    return std::nullopt;
+  }
+
+  if (!is_send_body) { // No body sending for HEAD request
+    return 200;
+  }
+
+  // body
+  if (sock.send_all(body) == -1) {
+    LOG_ERRNO("send");
+    return std::nullopt;
+  }
+
   return 200;
 }
 
