@@ -1,4 +1,5 @@
 #include "httphandler.hpp"
+#include "httputils.hpp"
 #include <array>
 #include <chrono>
 #include <gtest/gtest.h>

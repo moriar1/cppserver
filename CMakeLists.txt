@@ -97,7 +97,7 @@ target_link_libraries(project_options INTERFACE
 
 # Main Executable
 add_executable(${PROJECT_NAME} src/main.cpp src/threadpool.cpp
-               src/httphandler.cpp src/config.cpp)
+               src/httphandler.cpp src/config.cpp src/httputils.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_options)
 target_compile_definitions(${PROJECT_NAME} PRIVATE PROJECT_VERSION="${PROJECT_VERSION}")
 
@@ -113,6 +113,6 @@ add_executable(threadpool_test tests/threadpool_test.cpp src/threadpool.cpp)
 target_link_libraries(threadpool_test PRIVATE project_options GTest::gtest_main)
 gtest_discover_tests(threadpool_test)
 
-add_executable(httphandler_test tests/httphandler_test.cpp src/httphandler.cpp)
+add_executable(httphandler_test tests/httphandler_test.cpp src/httphandler.cpp src/httputils.cpp)
 target_link_libraries(httphandler_test PRIVATE project_options GTest::gtest_main)
 gtest_discover_tests(httphandler_test)
