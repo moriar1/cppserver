@@ -7,7 +7,6 @@
 #include <exception>
 #include <fcntl.h>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -302,11 +301,15 @@ std::optional<HttpStatus> send_file_response(const Socket &sock,
   auto content_length = static_cast<size_t>(st.st_size);
 
   // Send headers
-  std::stringstream sstr;
-  sstr << "HTTP/1.1 200 OK\r\nContent-Type: " << get_mime_type(content_path)
-       << "\r\nContent-Length: " << content_length
-       << "\r\nConnection: close\r\n\r\n";
-  if (sock.send_all(sstr.str()) == -1) {
+  std::string headers;
+  headers.reserve(128);
+  headers += "HTTP/1.1 200 OK\r\nContent-Type: ";
+  headers += get_mime_type(content_path);
+  headers += "\r\nContent-Length: ";
+  headers += std::to_string(content_length);
+  headers += "\r\nConnection: close\r\n\r\n";
+
+  if (sock.send_all(headers) == -1) {
     LOG_ERRNO("send");
     return std::nullopt;
   }
