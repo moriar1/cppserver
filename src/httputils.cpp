@@ -150,4 +150,37 @@ std::string url_decode(std::string_view s) {
   return decoded;
 }
 
+std::string generate_dir_html(std::filesystem::directory_iterator it,
+                              const std::filesystem::path &web_path) {
+  std::string body;
+  body.reserve(2048);
+
+  body += "<html><head><title>Index of ";
+  body += web_path.native();
+  body += "</title></head><body><h1>Index of ";
+  body += web_path.native();
+  body += "/</h1><hr><pre>";
+
+  if (web_path != "./") {
+    body += "<a href=\"/../\">../</a>\n";
+  }
+
+  for (const auto &entry : it) {
+    std::string full_path = entry.path().string(); // `./path/to/myfile.txt`
+    std::string_view href = full_path;
+    href.remove_prefix(1); // remove dot `./path` -> `/path`
+
+    std::string filename = entry.path().filename().string(); // `myfile.txt`
+
+    body += "<a href=\"";
+    body += href;
+    body += "\">";
+    body += filename;
+    body += "</a>\n";
+  }
+
+  body += "</pre><hr></body></html>\n";
+  return body;
+}
+
 } // namespace http

@@ -21,9 +21,11 @@ namespace fs = std::filesystem;
 static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
 static std::optional<HttpStatus>
-send_file_response(const Socket &sock, const fs::path &path, bool is_send_body);
-static std::optional<HttpStatus>
-send_dir_response(const Socket &sock, const fs::path &path, bool is_send_body);
+send_file_response(const Socket &sock, const fs::path &content_path,
+                   bool is_send_body);
+static std::optional<HttpStatus> send_dir_response(const Socket &sock,
+                                                   const fs::path &web_path,
+                                                   bool is_send_body);
 
 std::optional<std::string> read_request_headers(const Socket &sock,
                                                 std::string_view ip) {
@@ -133,7 +135,7 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
   }
 
   std::error_code ec;
-  bool is_dir = std::filesystem::is_directory(path, ec);
+  bool is_dir = fs::is_directory(path, ec);
   if (ec) {
     if (ec == std::errc::no_such_file_or_directory) {
       return send_404(sock);
@@ -222,38 +224,17 @@ std::optional<HttpStatus> send_file_response(const Socket &sock,
 }
 
 // Sends HTML with entries in requested directory
-std::optional<HttpStatus>
-send_dir_response(const Socket &sock, const fs::path &path, bool is_send_body) {
-  std::string body;
-  body.reserve(2048);
-
-  // clang-format off
-  body = "<html><head><title>Index of " + path.native() + "</title></head><body>"
-         "<h1>Index of " + path.native() + "/</h1><hr><pre><a href=\"/../\">../</a>\n";
-  // clang-format on
-
+std::optional<HttpStatus> send_dir_response(const Socket &sock,
+                                            const fs::path &web_path,
+                                            bool is_send_body) {
   std::error_code ec;
-  auto it = std::filesystem::directory_iterator(path, ec);
+  auto it = fs::directory_iterator(web_path, ec);
   if (ec) {
     LOG_ERROR("directory_iterator: ", ec.message());
     return http::send_500(sock);
   }
 
-  for (const auto &entry : it) {
-    std::string full_path = entry.path().string(); // `./path/to/myfile.txt`
-    std::string_view href = full_path;
-    href.remove_prefix(1); // remove dot `./path` -> `/path`
-
-    std::string filename = entry.path().filename().string(); // `myfile.txt`
-
-    body += "<a href=\"";
-    body += href;
-    body += "\">";
-    body += filename;
-    body += "</a>\n";
-  }
-
-  body += "</pre><hr></body></html>\n";
+  std::string body = generate_dir_html(it, web_path);
 
   // Send headers
   std::string headers;
