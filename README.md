@@ -116,6 +116,7 @@ echo -ne "anything" | nc localhost 3490
 │   ├── config.hpp        -- CLI parser and server configuration structure
 │   ├── customlogger.hpp  -- thread-safe logger
 │   ├── httphandler.hpp   -- connection and HTTP handler
+│   ├── httputils.hpp     -- hex_to_char(), url_decode(), etc.
 │   ├── socket.hpp        -- RAII sockets wrapper (`bind`, `listen`, etc.)
 │   ├── threadpool.hpp    -- thread pool for client handling
 │   └── uniquefd.hpp      -- RAII wrapper for POSIX file descriptors
@@ -123,6 +124,7 @@ echo -ne "anything" | nc localhost 3490
 │   ├── main.cpp          -- server loop
 │   ├── config.cpp
 │   ├── httphandler.cpp
+│   ├── httputils.cpp
 │   └── threadpool.cpp
 └── tests
     ├── httphandler_test.cpp -- unit tests
