@@ -1,4 +1,5 @@
 #include "httputils.hpp"
+#include <string>
 
 #ifdef __FreeBSD__
 #include <sys/syslimits.h>
@@ -150,15 +151,40 @@ std::string url_decode(std::string_view s) {
   return decoded;
 }
 
+// NOTE: use std::move() to pass str
+static std::string html_encode(std::string str) {
+  size_t pos = str.find_first_of("&\"'<>/");
+  if (pos == std::string::npos) {
+    return str;
+  }
+
+  std::string out;
+  out.reserve(str.size());
+  out.append(str, 0, pos);
+
+  for (size_t i = pos; i < str.size(); i++) {
+    switch (str[i]) { // clang-format off
+    case '&':  out += "&amp;"; break;
+    case '"':  out += "&quot;"; break;
+    case '\'': out += "&apos;"; break;
+    case '>':  out += "&gt;"; break;
+    case '<':  out += "&lt;"; break;
+    default:   out += str[i]; // clang-format on
+    }
+  }
+  return out;
+}
+
 std::string generate_dir_html(std::filesystem::directory_iterator it,
                               const std::filesystem::path &web_path) {
   std::string body;
   body.reserve(2048);
 
+  std::string display_path = html_encode(web_path);
   body += "<html><head><title>Index of ";
-  body += web_path.native();
+  body += display_path;
   body += "</title></head><body><h1>Index of ";
-  body += web_path.native();
+  body += display_path;
   body += "/</h1><hr><pre>";
 
   if (web_path != "./") {
@@ -166,11 +192,12 @@ std::string generate_dir_html(std::filesystem::directory_iterator it,
   }
 
   for (const auto &entry : it) {
-    std::string full_path = entry.path().string(); // `./path/to/myfile.txt`
+    // TODO: use `html_encode` for `display_path` and `url_encode` for href
+    std::string full_path = html_encode(entry.path().string());
     std::string_view href = full_path;
     href.remove_prefix(1); // remove dot `./path` -> `/path`
 
-    std::string filename = entry.path().filename().string(); // `myfile.txt`
+    std::string filename = html_encode(entry.path().filename().string());
 
     body += "<a href=\"";
     body += href;
