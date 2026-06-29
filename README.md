@@ -14,7 +14,7 @@ Multi-threaded HTTP server using custom thread pool and BSD sockets.
 - CMake
 - Ninja (optional)
 
-Installing dependencies for Ubuntu:
+Installing dependencies on Ubuntu:
 
 ```sh
 sudo apt install -y build-essential cmake ninja-build
@@ -111,7 +111,7 @@ echo -ne "anything" | nc localhost 3490
 
 ```text
 .
-├── .github/workflows     -- Github workflow
+├── .github/workflows
 ├── include
 │   ├── config.hpp        -- CLI parser and server configuration structure
 │   ├── customlogger.hpp  -- thread-safe logger
@@ -131,3 +131,33 @@ echo -ne "anything" | nc localhost 3490
     ├── threadpool_test.cpp  -- unit tests
     └── integration_test.py  -- python integration tests
 ```
+
+```
+[Client] -> [Listening Socket] -> [Main Loop] -> [Thread Pool] -> [HTTP Handler (sendfile)]
+```
+
+## Features
+
+- Thread Pool pattern for handling concurrent connections
+- Basic HTTP/1.1 GET, HEAD requests handling
+- Graceful shutdown (using pipe trick)
+- Unit and Integration tests
+- GitHub Actions CI/CD for automated testing (with ASan/UBSan) and automated Release deployment
+- Thread-safe logging with compile-time option to disable.
+- URL encoding (UTF-8 support)
+- CLI configuration
+- Path traversal protection (`..` checks)
+- Zero-copy file transfer using `sendfile()`
+- Header size limits (returns 431 if too large)
+- Socket timeouts to prevent hanging connections
+
+**Ideas for future:**
+
+- Review project structure for supporting other HTTP methods (POST)
+- Use async API (kqueue/epoll) instead of thread pool
+- Cache files (like `index.html`)
+- Implement file server with full directory listing support (like `python -m http.server`)
+- Add perfomance comparason with other solutions (with `wrk`)
+- Compare `POSIX sockets` vs `Boost.Asio` vs `Tokio`
+- Explore Kernel Bypass tech (like DPDK) for ultra-low latency packet processing
+- Add HTTP/2 support
