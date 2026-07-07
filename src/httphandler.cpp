@@ -12,20 +12,15 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <system_error>
 
 namespace http {
-
-namespace fs = std::filesystem;
 
 static std::optional<HttpStatus> handle_http_request(const Socket &sock,
                                                      std::string_view request);
 static std::optional<HttpStatus>
-send_file_response(const Socket &sock, const fs::path &content_path,
+send_file_response(const Socket &sock,
+                   const std::filesystem::path &content_path,
                    bool is_send_body);
-static std::optional<HttpStatus> send_dir_response(const Socket &sock,
-                                                   const fs::path &web_path,
-                                                   bool is_send_body);
 
 std::optional<std::string> read_request_headers(const Socket &sock,
                                                 std::string_view ip) {
@@ -127,15 +122,16 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
   std::string path_str = (pos == 0 || pos == std::string::npos)
                              ? "./index.html"
                              : "./" + url_decode(request.substr(0, pos));
-  fs::path path{path_str};
+  std::filesystem::path path{path_str};
 
   // Prevent Path Traversal (no `../../` in path)
   if (!is_path_safe(path)) {
     return send_403(sock);
   }
 
+  // Check if directory is requested
   std::error_code ec;
-  bool is_dir = fs::is_directory(path, ec);
+  bool is_dir = std::filesystem::is_directory(path, ec);
   if (ec) {
     if (ec == std::errc::no_such_file_or_directory) {
       return send_404(sock);
@@ -143,13 +139,17 @@ std::optional<HttpStatus> handle_http_request(const Socket &sock,
     return send_500(sock);
   }
 
-  return is_dir ? send_dir_response(sock, path, is_get)
-                : send_file_response(sock, path, is_get);
+  if (is_dir) {
+    return send_404(sock);
+  }
+
+  return send_file_response(sock, path, is_get);
 }
 
-std::optional<HttpStatus> send_file_response(const Socket &sock,
-                                             const fs::path &content_path,
-                                             bool is_send_body) {
+std::optional<HttpStatus>
+send_file_response(const Socket &sock,
+                   const std::filesystem::path &content_path,
+                   bool is_send_body) {
   // Prepare file
   UniqueFd content_fd{open(content_path.c_str(), O_RDONLY)};
   if (content_fd.get() == -1) {
@@ -220,43 +220,6 @@ std::optional<HttpStatus> send_file_response(const Socket &sock,
     return std::nullopt; // sendfile error, but we sent `200 OK` in headers
   }
 #endif
-  return 200;
-}
-
-// Sends HTML with entries in requested directory
-std::optional<HttpStatus> send_dir_response(const Socket &sock,
-                                            const fs::path &web_path,
-                                            bool is_send_body) {
-  std::error_code ec;
-  auto it = fs::directory_iterator(web_path, ec);
-  if (ec) {
-    LOG_ERROR("directory_iterator: ", ec.message());
-    return http::send_500(sock);
-  }
-
-  std::string body = generate_dir_html(it, web_path);
-
-  // Send headers
-  std::string headers;
-  headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ";
-  headers += std::to_string(body.size());
-  headers += "\r\nConnection: close\r\n\r\n";
-
-  if (sock.send_all(headers) == -1) {
-    LOG_ERRNO("send");
-    return std::nullopt;
-  }
-
-  if (!is_send_body) { // No body sending for HEAD request
-    return 200;
-  }
-
-  // body
-  if (sock.send_all(body) == -1) {
-    LOG_ERRNO("send");
-    return std::nullopt;
-  }
-
   return 200;
 }
 

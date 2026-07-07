@@ -14,8 +14,6 @@ std::string url_decode(std::string_view);
 bool is_path_safe(const std::filesystem::path &path);
 std::optional<std::string> read_request_headers(const Socket &,
                                                 std::string_view);
-std::string generate_dir_html(std::filesystem::directory_iterator it,
-                              const std::filesystem::path &web_path);
 
 [[nodiscard]] std::optional<HttpStatus>
 send_response(const Socket &, HttpStatus, std::string_view);
